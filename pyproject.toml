@@ -1,0 +1,30 @@
+[project]
+name = "buddy"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "duckduckgo-search>=7.4.4",
+    "langchain-community>=0.3.18",
+    "langchain-core>=0.3.34",
+    "langchain-openai>=0.3.5",
+    "langgraph-cli[inmem]>=0.1.73",
+    "langgraph>=0.2.72",
+    "openai>=1.61.1",
+    "pydantic>=2.10.6",
+    "python-dotenv>=1.0.1",
+    "rich>=13.9.4",
+    "scipy>=1.15.1",
+    "sounddevice>=0.5.1",
+    "wavio>=0.0.9",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"

@@ -1,23 +1,22 @@
 from typing import Annotated, Any
-from langchain_core.tools import BaseTool, InjectedToolCallId
-from langchain_core.messages import ToolMessage
-from dotenv import load_dotenv
 
 import requests
-from langgraph.graph.state import Command
-from langgraph.prebuilt import InjectedState
+from dotenv import load_dotenv
 from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import BaseTool, InjectedToolCallId
+from langgraph.prebuilt import InjectedState
+from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 load_dotenv()
+
 
 class WebSearchInput(BaseModel):
     query: str = Field(description="Query to search for")
     tool_call_id: Annotated[str, InjectedToolCallId] = ""
     docs: Annotated[Any, InjectedState] = []
-
 
 
 class WebSearch(BaseTool):
@@ -41,7 +40,6 @@ class WebSearch(BaseTool):
         )
 
     def format_docs(self, docs: list) -> str:
-
         str_docs = []
 
         for doc in docs:
@@ -60,7 +58,6 @@ class WebSearch(BaseTool):
 
         return "\n\n---\n\n".join(str_docs)
 
-
     def get_site(self, url: str) -> str:
         reader_url = "https://r.jina.ai/"
 
@@ -74,7 +71,6 @@ class WebSearch(BaseTool):
         tool_call_id: Annotated[str, InjectedToolCallId] = "",
         docs: Annotated[Any, InjectedState] = [],
     ) -> Command:
-
         print("Calling web search tool")
         if hasattr(docs, "docs"):
             existing_docs = docs.docs
@@ -106,7 +102,7 @@ class WebSearch(BaseTool):
                     ],
                 }
             )
-        
+
         else:
             return Command(
                 update={
@@ -118,9 +114,6 @@ class WebSearch(BaseTool):
                     ],
                 }
             )
-
-
-
 
 
 if __name__ == "__main__":

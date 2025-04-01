@@ -8,6 +8,7 @@ from langgraph.prebuilt import InjectedState
 
 load_dotenv()
 
+
 class Template(BaseTool):
     name: str = "template"
     description: str = "Creates a tool definition"
@@ -37,6 +38,7 @@ class Template(BaseTool):
                 ],
             }
         )
+
 
 if __name__ == "__main__":
     from rich.console import Console

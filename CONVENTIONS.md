@@ -1,0 +1,3 @@
+- use uv for all project related tasks instead of pip
+- To run files, always use uv run <file>
+- to install packages use uv add <package>

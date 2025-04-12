@@ -127,7 +127,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    from prompt_toolkit import prompt
-    text = prompt("Enter some text: ")
-    print(text)
-    # main()
+    # from prompt_toolkit import prompt
+    # text = prompt("Enter some text: ")
+    # print(text)
+    main()

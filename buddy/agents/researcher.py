@@ -1,18 +1,18 @@
-from typing import Annotated
 import os
-from dotenv import load_dotenv
+from typing import Annotated
 
-from langgraph.graph import StateGraph, START, END
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_openai import ChatOpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from buddy.tools.web_search import WebSearch
 
 load_dotenv()
 
-token = os.environ["GITHUB_TOKEN"]
+token = SecretStr(os.environ["GITHUB_TOKEN"])
 endpoint = "https://models.inference.ai.azure.com"
 model_name = "gpt-4o-mini"
 # model_name = "DeepSeek-R1"
@@ -28,7 +28,8 @@ tool_node = ToolNode(tools=tools)
 class State(BaseModel):
     messages: Annotated[list, add_messages]
 
-def chatbot(state: State):
+def chatbot(state: State) -> dict:
+    """Chatbot."""
     return {"messages": [llm_with_tools.invoke(state.messages)]}
 
 
@@ -41,5 +42,3 @@ graph_builder.add_conditional_edges("chatbot", tools_condition)
 
 graph_builder.add_edge("tools", "chatbot")
 graph_builder.add_edge(START, "chatbot")
-
-graph = graph_builder.compile()

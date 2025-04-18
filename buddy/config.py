@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
 import os
+
 from dotenv import load_dotenv
+from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
@@ -10,18 +11,19 @@ class Config(BaseModel):
     # API Configuration
     endpoint: str = Field(default="https://models.inference.ai.azure.com")
     model_name: str = Field(default="gpt-4o-mini")
-    token: Optional[str] = Field(default=os.getenv("GITHUB_TOKEN"))
+    token: str | None = Field(default=os.getenv("GITHUB_TOKEN"))
 
     # Shell command restrictions
-    allowed_commands: List[str] = Field(default=["ls", "pwd", "date", "curl -O"])
-    blocked_patterns: List[str] = Field(default=["rm", "del", ">", "|", "&", "sudo"])
+    allowed_commands: list[str] = Field(default=["ls", "pwd", "date", "curl -O"])
+    blocked_patterns: list[str] = Field(default=["rm", "del", ">", "|", "&", "sudo"])
 
     # Safety settings
     shell_timeout: int = Field(default=10, description="Timeout in seconds")
 
     @classmethod
     def from_runnable_config(cls, runnable_config: dict) -> "Config":
-        """Create Config instance from LangGraph's RunnableConfig by merging:
+        """Create Config instance from LangGraph's RunnableConfig by merging.
+
         - Default config values
         - Any overrides from RunnableConfig's configurable dict
         """
@@ -36,8 +38,8 @@ class Config(BaseModel):
 
         return cls(**kwargs)
 
-    def to_runnable_config(self) -> dict:
-        """Convert to LangGraph-compatible RunnableConfig"""
+    def to_runnable_config(self) -> RunnableConfig:
+        """Convert to LangGraph-compatible RunnableConfig."""
         return {
             "configurable": {
                 "api_config": {

@@ -57,6 +57,8 @@ lint.select = [
 lint.ignore = [
     "E501",  # Line too long (handled by formatter)
     "D100", # Top of module missing docstring
+    "D101",
+    "D103",
     "D213",
     "D203",
     "D107", # docstring in init

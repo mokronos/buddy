@@ -1,10 +1,10 @@
 from typing import Annotated
-from langchain_core.tools import BaseTool, InjectedToolCallId
-from langchain_core.messages import ToolMessage
-from dotenv import load_dotenv
 
-from langgraph.graph.state import Command
+from dotenv import load_dotenv
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import BaseTool, InjectedToolCallId
 from langgraph.prebuilt import InjectedState
+from langgraph.types import Command
 
 load_dotenv()
 
@@ -15,7 +15,7 @@ class Template(BaseTool):
 
     search_engine: str = ""
 
-    def __init__(self, search_engine: str = "duckduckgo"):
+    def __init__(self, search_engine: str = "duckduckgo") -> None:
         super().__init__()
         self.search_engine = search_engine
 

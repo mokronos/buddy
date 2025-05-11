@@ -3,23 +3,28 @@ from typing import Annotated
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, SecretStr
 
 from buddy.tools.web_search import WebSearch
+from buddy.tools.planner import Planner
 
 load_dotenv()
 
 token = SecretStr(os.environ["GITHUB_TOKEN"])
+# token = SecretStr(os.environ["OPENROUTER_API_KEY"])
 endpoint = "https://models.inference.ai.azure.com"
+# endpoint = "https://openrouter.ai/api/v1"
 model_name = "gpt-4o-mini"
 # model_name = "DeepSeek-R1"
+# model_name = "mistralai/mistral-small-3.1-24b-instruct:free"
 
 llm = ChatOpenAI(base_url=endpoint, api_key=token, model=model_name)
 
-tools = [WebSearch()]
+tools = [WebSearch(full_page=True), Planner()]
 
 llm_with_tools = llm.bind_tools(tools)
 tool_node = ToolNode(tools=tools)

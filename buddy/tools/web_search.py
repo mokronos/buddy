@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool, InjectedToolCallId
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from pydantic import BaseModel, Field
+from bs4 import BeautifulSoup
 
 load_dotenv()
 
@@ -27,7 +28,7 @@ class WebSearch(BaseTool):
     search_engine: str = ""
     wrapper: DuckDuckGoSearchAPIWrapper = DuckDuckGoSearchAPIWrapper()
     search: DuckDuckGoSearchResults = DuckDuckGoSearchResults()
-    num_results: int = 5
+    num_results: int = 1
     region: str = "en_us"
     full_page: bool = False
 
@@ -58,12 +59,35 @@ class WebSearch(BaseTool):
 
         return "\n\n---\n\n".join(str_docs)
 
+    def extract_main_text(self, html: str) -> str:
+        print(html)
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Remove script, style, and other non-visible elements
+        for tag in soup(["script", "style", "noscript", "header", "footer", "nav", "aside"]):
+            tag.decompose()
+
+        # Try to find the main content
+        main = soup.find("main")
+        if main:
+            text = main.get_text(separator=" ", strip=True)
+        else:
+            # Fallback: get all visible text
+            text = soup.get_text(separator=" ", strip=True)
+
+
+        return text
+
     def get_site(self, url: str) -> str:
-        reader_url = "https://r.jina.ai/"
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
 
-        resp = requests.get(f"{reader_url}{url}")
+        limit = 5000
+        print(f"Fetched {url} with status code {resp.status_code}")
 
-        return resp.text
+        if resp.status_code == 200:
+            return self.extract_main_text(resp.text)[:limit]
+
+        return "Page not found"
 
     def _run(
         self,
@@ -88,7 +112,8 @@ class WebSearch(BaseTool):
 
         if self.full_page:
             for d in results:
-                d["site_content"] = get_site(d["link"])
+                d["site_content"] = self.get_site(d["link"])
+                print(f"Fetched {d['link']} with site content: \n {d['site_content']}")
 
         if hasattr(docs, "docs"):
             return Command(

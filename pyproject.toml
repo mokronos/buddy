@@ -13,6 +13,7 @@ dependencies = [
     "requests>=2.31.0",
     "pytest>=7.0.0",
     "python-dotenv>=1.0.1",
+    "litellm>=1.70.0",
 ]
 
 [dependency-groups]
@@ -58,6 +59,7 @@ lint.ignore = [
     "D213",
     "D203",
     "D107", # docstring in init
+    "D417"
 ]
 
 [tool.ruff.format]

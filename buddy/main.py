@@ -4,25 +4,22 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 from buddy.llm.llm import call_llm
+from buddy.cli.present import present
 
 
 def main() -> None:
     console = Console()
-    messages = [
-        {"role": "user", "content": "What is the capital of France?"}
-    ]
+    msg = "List me some atractions in paris, give a nice heading and a description. Highlight important words in bold. Use Markdown."
 
-    resp = call_llm(messages=messages, stream=True)
+    messages = [{"role": "user", "content": msg}]
 
-    if type(resp) is ModelResponse:
-        console.print(Markdown(resp["choices"][0]["message"]["content"]))
-    elif type(resp) is CustomStreamWrapper:
-        for chunk in resp:
-            if chunk["choices"][0]["finish_reason"] == "stop":
-                break
-            console.print(Markdown(chunk["choices"][0]["delta"]["content"]))
-    else:
-        raise ValueError(f"Unknown response type: {type(resp)}")
+    model = "github/gpt-4.1-mini"
+    model = "gemini/gemini-2.0-flash"
+    model = "gemini/gemini-2.5-flash-preview-04-17"
+
+    resp = call_llm(model=model, messages=messages, stream=True)
+
+    present(resp, console, refresh_frequency=20)
 
 
 if __name__ == "__main__":

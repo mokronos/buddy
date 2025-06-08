@@ -2,6 +2,10 @@ from rich.console import Console
 from langchain_core.messages import AIMessage, ToolMessage
 import tiktoken
 
+from io import BytesIO
+from PIL import Image
+import matplotlib.pyplot as plt
+
 def handle_event(event: dict, console: Console) -> None:
         for node, val in event.items():
             print(f"Node: {node}")
@@ -32,3 +36,18 @@ def show_context_size(event: dict, console: Console) -> None:
         total_tokens += len(encoding.encode(msg.content))
 
     console.print(f"Context size: {total_tokens}")
+
+def vis(compiled_graph) -> None:
+    # draw_mermaid_png() returns bytes
+    png_bytes = compiled_graph.get_graph().draw_mermaid_png()
+
+    # Load bytes into a PIL Image
+    img = Image.open(BytesIO(png_bytes))
+
+    # Optional: convert to format matplotlib likes (e.g., RGB)
+    img = img.convert('RGB')
+
+    # Show with matplotlib
+    plt.imshow(img)
+    plt.axis('off')  # optional
+    plt.show()

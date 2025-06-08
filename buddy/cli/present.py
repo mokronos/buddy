@@ -11,6 +11,15 @@ def present(
     refresh_frequency: int = 10,
 ) -> None:
     if type(resp) is ModelResponse:
+
+        response_msg = resp.choices[0].message
+        tool_calls = response_msg.tool_calls
+
+        if tool_calls:
+            console.print("Tool Calls:")
+            for tool_call in tool_calls:
+                print(tool_call)
+
         # Full response - render as Markdown
         content = resp["choices"][0]["message"]["content"]
         console.print(Markdown(content))

@@ -51,3 +51,27 @@ def vis(compiled_graph) -> None:
     plt.imshow(img)
     plt.axis('off')  # optional
     plt.show()
+
+def save_graph(compiled_graph) -> None:
+    mermaid_str = compiled_graph.get_graph().draw_mermaid()
+
+    html_template = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+      <script>
+        mermaid.initialize({{ startOnLoad: true }});
+      </script>
+    </head>
+    <body>
+      <div class="mermaid">
+        {mermaid_str}
+      </div>
+    </body>
+    </html>
+    """
+
+    with open("diagram.html", "w") as f:
+        f.write(html_template)

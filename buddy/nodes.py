@@ -1,4 +1,5 @@
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import interrupt
 from buddy.llm.llm import call_llm
 from buddy.llm.utils import get_resp, get_tool_call_msg, run_tool
 from buddy.log import logger
@@ -39,3 +40,17 @@ class ToolNode:
             tool_responses.append(tool_resp)
 
         return {"messages": tool_responses}
+
+class HumanNode:
+    def __init__(self) -> None:
+        pass
+
+    def __call__(self, state: dict) -> dict:
+
+        human_input = interrupt("Human: ")
+
+        human_msg = {
+            "role": "user",
+            "content": human_input,
+        }
+        return {"messages": [human_msg]}

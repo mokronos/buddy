@@ -7,11 +7,13 @@ debug_level = logging.DEBUG if debug_flag == "1" else logging.INFO
 logger = logging.getLogger("BUDDY")
 logger.setLevel(debug_level)
 
-handler = logging.StreamHandler()
-handler.setLevel(debug_level)
-handler.setFormatter(logging.Formatter("%(name)s|%(levelname)s: %(message)s"))
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setLevel(debug_level)
+    handler.setFormatter(logging.Formatter("%(name)s|%(levelname)s: %(message)s"))
 
-logger.addHandler(handler)
+    logger.addHandler(handler)
+
 logger.propagate = False
 
 logger.debug("DEBUG LOGGING ENABLED")

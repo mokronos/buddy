@@ -2,13 +2,15 @@ from typing import Annotated
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command
+from langgraph.types import Command, interrupt
 from typing_extensions import TypedDict
 
 from buddy.edges import end_condition, tools_condition
 from buddy.nodes import ChatbotNode, HumanNode, ToolNode
 from buddy.tools.tool import Tool
+from buddy.state import State
 from buddy.utils import save_graph
+from log import logger
 
 model = "gemini/gemini-2.5-flash-preview-04-17"
 
@@ -23,11 +25,6 @@ class Multiply(Tool):
 
 multiply = Multiply("multiply", "Multiply two numbers")
 tools = [multiply]
-
-
-class State(TypedDict):
-    messages: Annotated[list, lambda left, right: left + right]
-
 
 graph_builder = StateGraph(State)
 
@@ -62,23 +59,38 @@ config = {
     }
 }
 
-resp = graph.invoke(
+resp = graph.stream(
     {
-        "messages": [
-            # {
-            #     "role": "user",
-            #     "content": "Multiply 828 * 9. And 26 * 135. Use the multiply tool to do this.",
-            # }
-        ]
+        "messages": [],
+        "mcps": [],
+        "cores": []
     },
+    # {},
     config=config,
+    stream_mode="updates",
 )
 
-print(resp)
+for response in resp:
+    print(response)
 
-resp2 = graph.invoke(
-    Command(resume="Multiply 828 * 9. And 26 * 135. Use the multiply tool to do this."),
-    config=config,
-)
+logger.info("Started converstation")
 
-print(resp2)
+while True:
+    logger.info("Getting user input...")
+    human_input = input("Human: ")
+
+    if human_input == "quit":
+        break
+
+    logger.info("Got user input")
+
+    resp = graph.stream(
+        Command(resume=human_input),
+        config=config,
+        stream_mode="values"
+    )
+
+    logger.info("Got response")
+
+    for event in resp:
+        print(event)

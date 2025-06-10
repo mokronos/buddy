@@ -1,3 +1,4 @@
+from langgraph.graph.graph import CompiledGraph
 from rich.console import Console
 from langchain_core.messages import AIMessage, ToolMessage
 import tiktoken
@@ -52,7 +53,7 @@ def vis(compiled_graph) -> None:
     plt.axis('off')  # optional
     plt.show()
 
-def save_graph(compiled_graph) -> None:
+def save_graph(compiled_graph: CompiledGraph) -> None:
     mermaid_str = compiled_graph.get_graph().draw_mermaid()
 
     html_template = f"""

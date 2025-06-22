@@ -1,41 +1,119 @@
-from litellm import CustomStreamWrapper, supports_parallel_function_calling, supports_function_calling
-from litellm.types.utils import ModelResponse
-from rich.console import Console
-from rich.markdown import Markdown
-
-from buddy.llm.llm import call_llm
-from buddy.cli.present import present
-from buddy.tools.tool import Tool
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.utils import new_agent_text_message
 
 
-def main() -> None:
-    console = Console()
-    # msg = "List me some atractions in paris, give a nice heading and a description. Highlight important words in bold. Use Markdown."
-    msg = "Multiply 828 * 9. And 26 * 135. Use the multiply tool to do this."
+# --8<-- [start:HelloWorldAgent]
+class HelloWorldAgent:
+    """Hello World Agent."""
 
-    messages = [{"role": "user", "content": msg}]
-
-    model = "github/gpt-4.1-mini"
-    model = "gemini/gemini-2.0-flash"
-    model = "gemini/gemini-2.5-flash-preview-04-17"
-
-    assert supports_function_calling(model=model)
-    # assert supports_parallel_function_calling(model=model)
-
-    class Multiply(Tool):
-        name = "multiply"
-        description = "Multiply two numbers"
-
-        def run(self, x: int, y: int) -> int:
-            return x * y
-
-    multiply = Multiply("multiply", "Multiply two numbers")
-    tools = [multiply.get_input_schema()]
-
-    resp = call_llm(model=model, messages=messages, stream=False, tools=tools)
-
-    present(resp, console, refresh_frequency=20)
+    async def invoke(self) -> str:
+        return 'Hello World'
 
 
-if __name__ == "__main__":
-    main()
+# --8<-- [end:HelloWorldAgent]
+
+
+# --8<-- [start:HelloWorldAgentExecutor_init]
+class HelloWorldAgentExecutor(AgentExecutor):
+    """Test AgentProxy Implementation."""
+
+    def __init__(self):
+        self.agent = HelloWorldAgent()
+
+    # --8<-- [end:HelloWorldAgentExecutor_init]
+    # --8<-- [start:HelloWorldAgentExecutor_execute]
+    async def execute(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None:
+        result = await self.agent.invoke()
+        await event_queue.enqueue_event(new_agent_text_message(result))
+
+    # --8<-- [end:HelloWorldAgentExecutor_execute]
+
+    # --8<-- [start:HelloWorldAgentExecutor_cancel]
+    async def cancel(
+        self, context: RequestContext, event_queue: EventQueue
+    ) -> None:
+        raise Exception('cancel not supported')
+
+    # --8<-- [end:HelloWorldAgentExecutor_cancel]
+
+import uvicorn
+
+from a2a.server.apps import A2AStarletteApplication
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentSkill,
+)
+
+
+if __name__ == '__main__':
+    # --8<-- [start:AgentSkill]
+    skill = AgentSkill(
+        id='hello_world',
+        name='Returns hello world',
+        description='just returns hello world',
+        tags=['hello world'],
+        examples=['hi', 'hello world'],
+    )
+    # --8<-- [end:AgentSkill]
+
+    extended_skill = AgentSkill(
+        id='super_hello_world',
+        name='Returns a SUPER Hello World',
+        description='A more enthusiastic greeting, only for authenticated users.',
+        tags=['hello world', 'super', 'extended'],
+        examples=['super hi', 'give me a super hello'],
+    )
+
+    # --8<-- [start:AgentCard]
+    # This will be the public-facing agent card
+    public_agent_card = AgentCard(
+        name='Hello World Agent',
+        description='Just a hello world agent',
+        url='http://localhost:9999/',
+        version='1.0.0',
+        defaultInputModes=['text'],
+        defaultOutputModes=['text'],
+        capabilities=AgentCapabilities(streaming=True),
+        skills=[skill],  # Only the basic skill for the public card
+        supportsAuthenticatedExtendedCard=True,
+    )
+    # --8<-- [end:AgentCard]
+
+    # This will be the authenticated extended agent card
+    # It includes the additional 'extended_skill'
+    specific_extended_agent_card = public_agent_card.model_copy(
+        update={
+            'name': 'Hello World Agent - Extended Edition',  # Different name for clarity
+            'description': 'The full-featured hello world agent for authenticated users.',
+            'version': '1.0.1',  # Could even be a different version
+            # Capabilities and other fields like url, defaultInputModes, defaultOutputModes,
+            # supportsAuthenticatedExtendedCard are inherited from public_agent_card unless specified here.
+            'skills': [
+                skill,
+                extended_skill,
+            ],  # Both skills for the extended card
+        }
+    )
+
+    request_handler = DefaultRequestHandler(
+        agent_executor=HelloWorldAgentExecutor(),
+        task_store=InMemoryTaskStore(),
+    )
+
+    server = A2AStarletteApplication(
+        agent_card=public_agent_card,
+        http_handler=request_handler,
+        extended_agent_card=specific_extended_agent_card,
+    )
+
+    uvicorn.run(server.build(), host='0.0.0.0', port=9999)
+
+

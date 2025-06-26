@@ -1,46 +1,6 @@
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
-
-
-# --8<-- [start:HelloWorldAgent]
-class HelloWorldAgent:
-    """Hello World Agent."""
-
-    async def invoke(self) -> str:
-        return 'Hello World'
-
-
-# --8<-- [end:HelloWorldAgent]
-
-
-# --8<-- [start:HelloWorldAgentExecutor_init]
-class HelloWorldAgentExecutor(AgentExecutor):
-    """Test AgentProxy Implementation."""
-
-    def __init__(self):
-        self.agent = HelloWorldAgent()
-
-    # --8<-- [end:HelloWorldAgentExecutor_init]
-    # --8<-- [start:HelloWorldAgentExecutor_execute]
-    async def execute(
-        self,
-        context: RequestContext,
-        event_queue: EventQueue,
-    ) -> None:
-        result = await self.agent.invoke()
-        await event_queue.enqueue_event(new_agent_text_message(result))
-
-    # --8<-- [end:HelloWorldAgentExecutor_execute]
-
-    # --8<-- [start:HelloWorldAgentExecutor_cancel]
-    async def cancel(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
-        raise Exception('cancel not supported')
-
-    # --8<-- [end:HelloWorldAgentExecutor_cancel]
-
 import uvicorn
 
 from a2a.server.apps import A2AStarletteApplication
@@ -53,8 +13,34 @@ from a2a.types import (
 )
 
 
+class HelloWorldAgent:
+    """Hello World Agent."""
+
+    async def invoke(self) -> str:
+        return 'Hello World'
+
+class HelloWorldAgentExecutor(AgentExecutor):
+    """Test AgentProxy Implementation."""
+
+    def __init__(self):
+        self.agent = HelloWorldAgent()
+
+    async def execute(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None:
+        result = await self.agent.invoke()
+        await event_queue.enqueue_event(new_agent_text_message(result))
+
+    async def cancel(
+        self, context: RequestContext, event_queue: EventQueue
+    ) -> None:
+        raise Exception('cancel not supported')
+
+
+
 if __name__ == '__main__':
-    # --8<-- [start:AgentSkill]
     skill = AgentSkill(
         id='hello_world',
         name='Returns hello world',
@@ -62,7 +48,6 @@ if __name__ == '__main__':
         tags=['hello world'],
         examples=['hi', 'hello world'],
     )
-    # --8<-- [end:AgentSkill]
 
     extended_skill = AgentSkill(
         id='super_hello_world',
@@ -72,7 +57,6 @@ if __name__ == '__main__':
         examples=['super hi', 'give me a super hello'],
     )
 
-    # --8<-- [start:AgentCard]
     # This will be the public-facing agent card
     public_agent_card = AgentCard(
         name='Hello World Agent',
@@ -85,7 +69,6 @@ if __name__ == '__main__':
         skills=[skill],  # Only the basic skill for the public card
         supportsAuthenticatedExtendedCard=True,
     )
-    # --8<-- [end:AgentCard]
 
     # This will be the authenticated extended agent card
     # It includes the additional 'extended_skill'
@@ -115,5 +98,3 @@ if __name__ == '__main__':
     )
 
     uvicorn.run(server.build(), host='0.0.0.0', port=9999)
-
-

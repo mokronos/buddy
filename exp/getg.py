@@ -27,18 +27,22 @@
 # from buddy.utils import save_graph
 # save_graph(graph)
 
-from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import InMemorySaver
-from typing import Annotated
-from typing_extensions import TypedDict
 from operator import add
+from typing import Annotated
+
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END, START, StateGraph
+from typing_extensions import TypedDict
+
 
 class State(TypedDict):
     foo: str
     bar: Annotated[list[str], add]
 
+
 def node_a(state: State):
     return {"foo": "a", "bar": ["a"]}
+
 
 def node_b(state: State):
     return {"foo": "b", "bar": ["b"]}

@@ -1,6 +1,7 @@
+from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 
-from langgraph.graph import StateGraph, START, END
+from buddy.utils import save_graph
 
 
 class DummyState(BaseModel):
@@ -41,7 +42,5 @@ migration_graph.add_edge("C", END)
 
 app = migration_graph.compile()
 
-
-from buddy.utils import save_graph
 
 save_graph(app)

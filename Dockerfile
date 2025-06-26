@@ -1,16 +1,21 @@
-FROM python:3.13-slim
+# Install uv
+FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        git \
-        vim \
-        curl \
-        make && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Change the working directory to the `app` directory
+WORKDIR /app
 
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Copy the lockfile and `pyproject.toml` into the image
+COPY uv.lock /app/uv.lock
+COPY pyproject.toml /app/pyproject.toml
 
-WORKDIR /workspace
+# Install dependencies
+RUN uv sync --frozen --no-install-project
 
-CMD ["bash"]
+# Copy the project into the image
+COPY . /app
+
+# Sync the project
+RUN uv sync --frozen
+
+CMD [ "python", "buddy/foo.py" ]

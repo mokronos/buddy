@@ -1,16 +1,13 @@
-from typing import Annotated
-
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command, interrupt
-from typing_extensions import TypedDict
+from langgraph.types import Command
 
+from buddy.log import logger
 from buddy.edges import end_condition, tools_condition
-from buddy.nodes import ChatbotNode, HumanNode, ToolNode
-from buddy.tools.tool import Tool
+from buddy.log import logger
 from buddy.state import State
+from buddy.tools.tool import Tool
 from buddy.utils import save_graph
-from log import logger
 
 model = "gemini/gemini-2.5-flash-preview-04-17"
 
@@ -39,13 +36,9 @@ graph_builder.add_node("human", human)
 graph_builder.add_edge(START, "human")
 graph_builder.add_edge("tools", "chatbot")
 
-graph_builder.add_conditional_edges(
-    "chatbot", tools_condition, {"tools": "tools", "human": "human"}
-)
+graph_builder.add_conditional_edges("chatbot", tools_condition, {"tools": "tools", "human": "human"})
 
-graph_builder.add_conditional_edges(
-    "human", end_condition, {"chatbot": "chatbot", END: END}
-)
+graph_builder.add_conditional_edges("human", end_condition, {"chatbot": "chatbot", END: END})
 
 checkpointer = InMemorySaver()
 graph = graph_builder.compile(checkpointer=checkpointer)
@@ -60,11 +53,7 @@ config = {
 }
 
 resp = graph.stream(
-    {
-        "messages": [],
-        "mcps": [],
-        "cores": []
-    },
+    {"messages": [], "mcps": [], "cores": []},
     # {},
     config=config,
     stream_mode="updates",
@@ -84,11 +73,7 @@ while True:
 
     logger.info("Got user input")
 
-    resp = graph.stream(
-        Command(resume=human_input),
-        config=config,
-        stream_mode="values"
-    )
+    resp = graph.stream(Command(resume=human_input), config=config, stream_mode="values")
 
     logger.info("Got response")
 

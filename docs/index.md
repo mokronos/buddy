@@ -1,3 +1,12 @@
+# buddy
+
+[![Release](https://img.shields.io/github/v/release/mokronos/buddy)](https://img.shields.io/github/v/release/mokronos/buddy)
+[![Build status](https://img.shields.io/github/actions/workflow/status/mokronos/buddy/main.yml?branch=main)](https://github.com/mokronos/buddy/actions/workflows/main.yml?query=branch%3Amain)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/mokronos/buddy)](https://img.shields.io/github/commit-activity/m/mokronos/buddy)
+[![License](https://img.shields.io/github/license/mokronos/buddy)](https://img.shields.io/github/license/mokronos/buddy)
+
+An autonomous LLM agent with comprehensive system tools
+
 ---
 title: Overview
 ---

@@ -1,12 +1,13 @@
-import litellm
 import json
-# set openai api key
-import os
 
+# set openai api key
+import litellm
 from dotenv import load_dotenv
+
 load_dotenv()
 
 model = "github/gpt-4.1-mini"
+
 
 # Example dummy function hard coded to return the same weather
 # In production, this could be your backend API or an external API
@@ -76,14 +77,12 @@ def test_parallel_function_call():
                     location=function_args.get("location"),
                     unit=function_args.get("unit"),
                 )
-                messages.append(
-                    {
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "name": function_name,
-                        "content": function_response,
-                    }
-                )  # extend conversation with function response
+                messages.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": function_response,
+                })  # extend conversation with function response
             second_response = litellm.completion(
                 model=model,
                 messages=messages,
@@ -91,6 +90,7 @@ def test_parallel_function_call():
             print("\nSecond LLM response:\n", second_response)
             return second_response
     except Exception as e:
-      print(f"Error occurred: {e}")
+        print(f"Error occurred: {e}")
+
 
 test_parallel_function_call()

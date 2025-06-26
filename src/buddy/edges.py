@@ -1,7 +1,8 @@
 from langgraph.graph import END
+from pydantic import BaseModel
 
 
-def tools_condition(state: dict) -> str:
+def tools_condition(state: BaseModel) -> str:
     assert state.messages
 
     last_msg = state.messages[-1]
@@ -13,7 +14,7 @@ def tools_condition(state: dict) -> str:
 
     return "human"
 
-def end_condition(state: dict) -> str:
+def end_condition(state: BaseModel) -> str:
     assert state.messages
 
     last_msg = state.messages[-1]

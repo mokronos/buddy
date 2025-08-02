@@ -6,7 +6,7 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from .interfaces import Agent, AgentRequest, AgentResponse, Capability, Skill, SkillType, Tool
+from buddy.agent.interfaces import Agent, AgentRequest, AgentResponse, Capability, Skill, SkillType, Tool
 
 
 class LLMAgent(Agent):

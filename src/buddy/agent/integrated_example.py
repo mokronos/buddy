@@ -11,10 +11,10 @@ This example shows how to create and run an A2A agent that uses:
 import asyncio
 import logging
 
-from ..tools.tool import Tool as BuddyTool
-from .a2a_adapter import create_a2a_adapter
-from .config import DEV_CONFIG, ConfigManager
-from .integrated_agent import create_integrated_agent
+from buddy.agent.a2a_adapter import create_a2a_adapter
+from buddy.agent.config import DEV_CONFIG, ConfigManager
+from buddy.agent.integrated_agent import create_integrated_agent
+from buddy.tools.tool import Tool as BuddyTool
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -222,7 +222,7 @@ async def test_agent_capabilities(agent):
         logger.info(f"\n🧪 Test {i}: {test_case['description']}")
 
         try:
-            from .interfaces import AgentRequest
+            from buddy.agent.interfaces import AgentRequest
 
             request = AgentRequest(skill_name=test_case["skill"], parameters=test_case["params"])
 
@@ -295,7 +295,7 @@ async def demonstrate_model_switching():
                     temperature=0.5,
                 )
 
-                from .interfaces import AgentRequest
+                from buddy.agent.interfaces import AgentRequest
 
                 request = AgentRequest(skill_name="general_query", parameters={"query": "What is 7 * 8?"})
 

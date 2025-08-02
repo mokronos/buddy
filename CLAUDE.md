@@ -110,6 +110,11 @@ make clean-build
 - Add tests for each implemented feature using `uv run pytest`
 - Place code files in the library folder (`buddy`) or subfolders
 - Follow the existing code style and patterns
+- **IMPORTANT**: Always use absolute imports, never relative imports
+  - ✅ Correct: `from buddy.tools.tool import Tool`
+  - ✅ Correct: `from buddy.agent.interfaces import Agent`
+  - ❌ Wrong: `from .tool import Tool`
+  - ❌ Wrong: `from ..tools.tool import Tool`
 
 ## Tool Development
 

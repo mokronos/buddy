@@ -7,8 +7,8 @@ the A2A agent system while preserving the original functionality.
 
 from typing import Any
 
-from ..tools.tool import Tool as BuddyTool
-from .interfaces import Tool as A2ATool
+from buddy.agent.interfaces import Tool as A2ATool
+from buddy.tools.tool import Tool as BuddyTool
 
 
 class ToolAdapter(A2ATool):

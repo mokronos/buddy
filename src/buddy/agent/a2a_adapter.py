@@ -9,7 +9,7 @@ import logging
 from dataclasses import asdict
 from typing import Any
 
-from .interfaces import Agent, AgentRequest
+from buddy.agent.interfaces import Agent, AgentRequest
 
 logger = logging.getLogger(__name__)
 

@@ -8,9 +8,9 @@ that can be tested with the A2A inspector.
 import asyncio
 import logging
 
-from .a2a_adapter import create_a2a_adapter
-from .agent import LLMAgent
-from .example_tools import get_example_tools
+from buddy.agent.a2a_adapter import create_a2a_adapter
+from buddy.agent.agent import LLMAgent
+from buddy.agent.example_tools import get_example_tools
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

@@ -8,11 +8,11 @@ the existing Buddy architecture while maintaining A2A protocol compatibility.
 import json
 from typing import Any
 
-from ..tools.tool import Tool as BuddyTool
-from .agent import LLMAgent
-from .interfaces import AgentRequest, AgentResponse
-from .llm_client import LiteLLMClient, create_llm_client
-from .tool_bridge import A2AToolBridge, create_integrated_tool_system
+from buddy.agent.agent import LLMAgent
+from buddy.agent.interfaces import AgentRequest, AgentResponse
+from buddy.agent.llm_client import LiteLLMClient, create_llm_client
+from buddy.agent.tool_bridge import A2AToolBridge, create_integrated_tool_system
+from buddy.tools.tool import Tool as BuddyTool
 
 
 class IntegratedA2AAgent(LLMAgent):

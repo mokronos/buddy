@@ -9,7 +9,7 @@ import math
 from datetime import datetime
 from typing import Any
 
-from .interfaces import Tool
+from buddy.agent.interfaces import Tool
 
 
 class CalculatorTool(Tool):

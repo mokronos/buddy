@@ -119,6 +119,7 @@ make clean-build
   - ✅ Correct: `refactor: convert to absolute imports and reorganize agent module`
   - ❌ Wrong: Adding co-authorship or listing all changes in commit message
   - ❌ Wrong: Multi-line commit messages with detailed bullet points
+- Use `git add -A` instead of `git add .` to stage all changes
 
 ## Tool Development
 

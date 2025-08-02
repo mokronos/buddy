@@ -11,7 +11,6 @@ def present(
     refresh_frequency: int = 10,
 ) -> None:
     if type(resp) is ModelResponse:
-
         response_msg = resp.choices[0].message
         tool_calls = response_msg.tool_calls
 
@@ -26,13 +25,12 @@ def present(
     elif type(resp) is CustomStreamWrapper:
         # Streaming response - collect chunks and render incrementally
         content = ""
-        with Live(
-            Markdown(""), console=console, refresh_per_second=refresh_frequency
-        ) as live:
+        with Live(Markdown(""), console=console, refresh_per_second=refresh_frequency) as live:
             for chunk in resp:
                 if chunk["choices"][0]["finish_reason"] == "stop":
                     break
                 content += chunk["choices"][0]["delta"].get("content", "")
                 live.update(Markdown(content))
     else:
-        raise ValueError(f"Unknown response type: {type(resp)}")
+        msg = f"Unknown response type: {type(resp)}"
+        raise ValueError(msg)

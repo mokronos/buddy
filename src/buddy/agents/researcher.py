@@ -3,14 +3,13 @@ from typing import Annotated
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.tools import tool
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, SecretStr
 
-from buddy.tools.web_search import WebSearch
 from buddy.tools.planner import Planner
+from buddy.tools.web_search import WebSearch
 
 load_dotenv()
 
@@ -32,6 +31,7 @@ tool_node = ToolNode(tools=tools)
 
 class State(BaseModel):
     messages: Annotated[list, add_messages]
+
 
 def chatbot(state: State) -> dict:
     """Chatbot."""

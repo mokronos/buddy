@@ -1,6 +1,6 @@
 from litellm import get_supported_openai_params, supports_function_calling
-from buddy.llm import call_llm
 
+from buddy.llm import call_llm
 
 # model = "openrouter/meta-llama/llama-4-maverick:free"
 model = "openrouter/meta-llama/llama-3.3-70b-instruct:free"

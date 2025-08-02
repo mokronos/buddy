@@ -38,6 +38,10 @@ docs-test: ## Test if documentation can be built without warnings or errors
 docs: ## Build and serve the documentation
 	@uv run mkdocs serve
 
+.PHONY: pre-commit
+pre-commit: ## Run pre-commit hooks
+	@uv run pre-commit run -a
+
 .PHONY: help
 help:
 	@uv run python -c "import re; \

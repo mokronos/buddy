@@ -12,9 +12,8 @@ def call_llm(
     tool_choice: str | dict | None = None,
     response_format: dict | None = None,
     temperature: float = 0.7,
-    stream: bool = False
+    stream: bool = False,
 ) -> ModelResponse | CustomStreamWrapper:
-
     resp = completion(
         messages=messages,
         model=model,
@@ -22,7 +21,7 @@ def call_llm(
         tool_choice=tool_choice,
         response_format=response_format,
         temperature=temperature,
-        stream=stream
+        stream=stream,
     )
 
     return resp

@@ -1,4 +1,5 @@
 import json
+
 from litellm import CustomStreamWrapper
 from litellm.types.utils import ModelResponse
 
@@ -12,7 +13,7 @@ def get_resp(
         tool_calls = response_msg.tool_calls
 
         if tool_calls:
-            console.print("Tool Calls:")
+            print("Tool Calls:")
             for tool_call in tool_calls:
                 print(tool_call)
 
@@ -20,9 +21,11 @@ def get_resp(
         content = resp["choices"][0]["message"]["content"]
         return content
     elif type(resp) is CustomStreamWrapper:
-        raise NotImplementedError("Streaming response not supported yet")
+        msg = "Streaming response not supported yet"
+        raise NotImplementedError(msg)
     else:
-        raise ValueError(f"Unknown response type: {type(resp)}")
+        msg = f"Unknown response type: {type(resp)}"
+        raise ValueError(msg)
 
 
 def run_tool(tools, tool_call):
@@ -39,21 +42,21 @@ def run_tool(tools, tool_call):
 
     return msg
 
-def get_tool_call_msg(tool_call) -> dict:
 
+def get_tool_call_msg(tool_call) -> dict:
     tool_calls = []
-    for tool_call in tool_call.tool_calls:
+    for tc in tool_call.tool_calls:
         tool_calls.append({
-            "id": tool_call.id,
+            "id": tc.id,
             "type": "function",
             "function": {
-                "name": tool_call.function.name,
-                "arguments": tool_call.function.arguments,
-            }
+                "name": tc.function.name,
+                "arguments": tc.function.arguments,
+            },
         })
 
     return {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": tool_calls,
+        "role": "assistant",
+        "content": None,
+        "tool_calls": tool_calls,
     }

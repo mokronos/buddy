@@ -46,11 +46,12 @@ class A2AServerAdapter:
             logger.info(f"A2A server started on {host}:{port}")
             self.is_running_flag = True
 
-        except ImportError:
+        except ImportError as e:
             logger.warning("a2a-sdk not available. Server not started.")
-            raise RuntimeError("a2a-sdk is required but not installed")
-        except Exception as e:
-            logger.error(f"Failed to start A2A server: {e}")
+            msg = "a2a-sdk is required but not installed"
+            raise RuntimeError(msg) from e
+        except Exception:
+            logger.exception("Failed to start A2A server")
             raise
 
     def stop_server(self) -> None:
@@ -59,8 +60,8 @@ class A2AServerAdapter:
             try:
                 # self.server.stop()
                 logger.info("A2A server stopped")
-            except Exception as e:
-                logger.error(f"Error stopping A2A server: {e}")
+            except Exception:
+                logger.exception("Error stopping A2A server")
             finally:
                 self.server = None
                 self.is_running_flag = False
@@ -147,7 +148,8 @@ class MockA2AServerAdapter(A2AServerAdapter):
     ) -> dict[str, Any]:
         """Simulate an A2A request for testing purposes."""
         if not self.is_running():
-            raise RuntimeError("Mock server is not running")
+            msg = "Mock server is not running"
+            raise RuntimeError(msg)
 
         request = AgentRequest(skill_name=skill_name, parameters=parameters, context=context)
 

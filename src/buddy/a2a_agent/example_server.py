@@ -106,8 +106,8 @@ async def run_example_server(host: str = "localhost", port: int = 8000, use_mock
 
     except KeyboardInterrupt:
         logger.info("Received interrupt signal")
-    except Exception as e:
-        logger.error(f"Error running server: {e}")
+    except Exception:
+        logger.exception("Error running server")
     finally:
         logger.info("Stopping A2A server...")
         adapter.stop_server()
@@ -162,8 +162,8 @@ async def demo_mock_interactions(adapter):
             else:
                 logger.error(f"Error: {result['error']}")
 
-        except Exception as e:
-            logger.error(f"Exception during test: {e}")
+        except Exception:
+            logger.exception("Exception during test")
 
         await asyncio.sleep(0.5)  # Small delay between tests
 

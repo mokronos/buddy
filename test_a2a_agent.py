@@ -116,8 +116,8 @@ async def main():
 
         logger.info("All tests passed! ✅")
 
-    except Exception as e:
-        logger.error(f"Test failed: {e}")
+    except Exception:
+        logger.exception("Test failed")
         raise
 
 

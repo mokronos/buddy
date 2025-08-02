@@ -240,7 +240,8 @@ If multiple tools are needed, respond with an array of such objects."""
     async def _execute_tool(self, tool_name: str, parameters: dict[str, Any]) -> Any:
         """Execute a specific tool with given parameters."""
         if tool_name not in self.tool_map:
-            raise ValueError(f"Tool not found: {tool_name}")
+            msg = f"Tool not found: {tool_name}"
+            raise ValueError(msg)
 
         tool = self.tool_map[tool_name]
         return await tool.execute(parameters)
@@ -248,7 +249,8 @@ If multiple tools are needed, respond with an array of such objects."""
     async def _call_llm(self, prompt: str) -> str:
         """Call the LLM with the given prompt."""
         if not self.llm_client:
-            raise ValueError("No LLM client configured")
+            msg = "No LLM client configured"
+            raise ValueError(msg)
 
         # This is a placeholder - actual implementation depends on your LLM client
         # For now, return a mock response
@@ -266,7 +268,8 @@ If multiple tools are needed, respond with an array of such objects."""
             elif isinstance(parsed, list):
                 return parsed
             else:
-                raise ValueError("Invalid instruction format")
+                msg = "Invalid instruction format"
+                raise TypeError(msg)
         except json.JSONDecodeError:
             # Fallback: return a basic instruction
             return [

@@ -37,7 +37,8 @@ class CalculatorTool(Tool):
         expression = parameters.get("expression", "")
 
         if not expression:
-            raise ValueError("Expression is required")
+            msg = "Expression is required"
+            raise ValueError(msg)
 
         try:
             # Safe evaluation of mathematical expressions
@@ -67,7 +68,8 @@ class CalculatorTool(Tool):
 
             return {"expression": expression, "result": result, "type": type(result).__name__}
         except Exception as e:
-            raise ValueError(f"Invalid mathematical expression: {e!s}")
+            msg = f"Invalid mathematical expression: {e!s}"
+            raise ValueError(msg) from e
 
 
 class TextProcessingTool(Tool):
@@ -98,10 +100,12 @@ class TextProcessingTool(Tool):
         operation = parameters.get("operation", "")
 
         if not text:
-            raise ValueError("Text is required")
+            msg = "Text is required"
+            raise ValueError(msg)
 
         if not operation:
-            raise ValueError("Operation is required")
+            msg = "Operation is required"
+            raise ValueError(msg)
 
         operations = {
             "word_count": lambda t: len(t.split()),
@@ -120,13 +124,16 @@ class TextProcessingTool(Tool):
         }
 
         if operation not in operations:
-            raise ValueError(f"Unknown operation: {operation}")
+            msg = f"Unknown operation: {operation}"
+            raise ValueError(msg)
 
         try:
             result = operations[operation](text)
-            return {"original_text": text, "operation": operation, "result": result}
         except Exception as e:
-            raise ValueError(f"Error processing text: {e!s}")
+            msg = f"Error processing text: {e!s}"
+            raise ValueError(msg) from e
+        else:
+            return {"original_text": text, "operation": operation, "result": result}
 
 
 class TimeTool(Tool):
@@ -175,30 +182,36 @@ class TimeTool(Tool):
             format_str = parameters.get("format", "%Y-%m-%d %H:%M:%S")
 
             if not timestamp_str:
-                raise ValueError("Timestamp is required for format_time action")
+                msg = "Timestamp is required for format_time action"
+                raise ValueError(msg)
 
             try:
                 # Parse ISO format timestamp
                 dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                 formatted = dt.strftime(format_str)
-
-                return {"original_timestamp": timestamp_str, "format": format_str, "formatted_time": formatted}
             except Exception as e:
-                raise ValueError(f"Invalid timestamp format: {e!s}")
+                msg = f"Invalid timestamp format: {e!s}"
+                raise ValueError(msg) from e
+            else:
+                return {"original_timestamp": timestamp_str, "format": format_str, "formatted_time": formatted}
 
         elif action == "time_diff":
             time1_str = parameters.get("time1")
             time2_str = parameters.get("time2")
 
             if not time1_str or not time2_str:
-                raise ValueError("Both time1 and time2 are required for time_diff action")
+                msg = "Both time1 and time2 are required for time_diff action"
+                raise ValueError(msg)
 
             try:
                 dt1 = datetime.fromisoformat(time1_str.replace("Z", "+00:00"))
                 dt2 = datetime.fromisoformat(time2_str.replace("Z", "+00:00"))
 
                 diff = dt2 - dt1
-
+            except Exception as e:
+                msg = f"Invalid timestamp format: {e!s}"
+                raise ValueError(msg) from e
+            else:
                 return {
                     "time1": time1_str,
                     "time2": time2_str,
@@ -206,11 +219,10 @@ class TimeTool(Tool):
                     "difference_days": diff.days,
                     "difference_readable": str(diff),
                 }
-            except Exception as e:
-                raise ValueError(f"Invalid timestamp format: {e!s}")
 
         else:
-            raise ValueError(f"Unknown action: {action}")
+            msg = f"Unknown action: {action}"
+            raise ValueError(msg)
 
 
 class DataStorageTool(Tool):
@@ -245,42 +257,63 @@ class DataStorageTool(Tool):
         key = parameters.get("key")
         value = parameters.get("value")
 
-        if action == "store":
-            if not key:
-                raise ValueError("Key is required for store action")
+        action_handlers = {
+            "store": self._handle_store,
+            "retrieve": self._handle_retrieve,
+            "list": self._handle_list,
+            "delete": self._handle_delete,
+            "clear": self._handle_clear,
+        }
 
-            self._storage[key] = value
-            return {"action": "store", "key": key, "value": value, "stored_at": datetime.now().isoformat()}
+        if action not in action_handlers:
+            msg = f"Unknown action: {action}"
+            raise ValueError(msg)
 
-        elif action == "retrieve":
-            if not key:
-                raise ValueError("Key is required for retrieve action")
+        return action_handlers[action](key, value)
 
-            if key not in self._storage:
-                raise ValueError(f"Key '{key}' not found in storage")
+    def _handle_store(self, key: str | None, value: Any) -> dict[str, Any]:
+        """Handle store action."""
+        if not key:
+            msg = "Key is required for store action"
+            raise ValueError(msg)
 
-            return {"action": "retrieve", "key": key, "value": self._storage[key]}
+        self._storage[key] = value
+        return {"action": "store", "key": key, "value": value, "stored_at": datetime.now().isoformat()}
 
-        elif action == "list":
-            return {"action": "list", "keys": list(self._storage.keys()), "count": len(self._storage)}
+    def _handle_retrieve(self, key: str | None, value: Any) -> dict[str, Any]:
+        """Handle retrieve action."""
+        if not key:
+            msg = "Key is required for retrieve action"
+            raise ValueError(msg)
 
-        elif action == "delete":
-            if not key:
-                raise ValueError("Key is required for delete action")
+        if key not in self._storage:
+            msg = f"Key '{key}' not found in storage"
+            raise ValueError(msg)
 
-            if key not in self._storage:
-                raise ValueError(f"Key '{key}' not found in storage")
+        return {"action": "retrieve", "key": key, "value": self._storage[key]}
 
-            deleted_value = self._storage.pop(key)
-            return {"action": "delete", "key": key, "deleted_value": deleted_value}
+    def _handle_list(self, key: str | None, value: Any) -> dict[str, Any]:
+        """Handle list action."""
+        return {"action": "list", "keys": list(self._storage.keys()), "count": len(self._storage)}
 
-        elif action == "clear":
-            count = len(self._storage)
-            self._storage.clear()
-            return {"action": "clear", "cleared_count": count}
+    def _handle_delete(self, key: str | None, value: Any) -> dict[str, Any]:
+        """Handle delete action."""
+        if not key:
+            msg = "Key is required for delete action"
+            raise ValueError(msg)
 
-        else:
-            raise ValueError(f"Unknown action: {action}")
+        if key not in self._storage:
+            msg = f"Key '{key}' not found in storage"
+            raise ValueError(msg)
+
+        deleted_value = self._storage.pop(key)
+        return {"action": "delete", "key": key, "deleted_value": deleted_value}
+
+    def _handle_clear(self, key: str | None, value: Any) -> dict[str, Any]:
+        """Handle clear action."""
+        count = len(self._storage)
+        self._storage.clear()
+        return {"action": "clear", "cleared_count": count}
 
 
 def get_example_tools() -> list[Tool]:

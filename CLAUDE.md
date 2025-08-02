@@ -115,6 +115,10 @@ make clean-build
   - ✅ Correct: `from buddy.agent.interfaces import Agent`
   - ❌ Wrong: `from .tool import Tool`
   - ❌ Wrong: `from ..tools.tool import Tool`
+- **Commit Message Style**: Keep commit messages concise and descriptive
+  - ✅ Correct: `refactor: convert to absolute imports and reorganize agent module`
+  - ❌ Wrong: Adding co-authorship or listing all changes in commit message
+  - ❌ Wrong: Multi-line commit messages with detailed bullet points
 
 ## Tool Development
 

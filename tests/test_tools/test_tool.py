@@ -210,7 +210,8 @@ class TestErrorHandling:
 
                     create_model(None)  # This should fail
                 except Exception as e:
-                    raise RuntimeError(f"Failed to generate schema for tool '{self.name}': {e}") from e
+                    msg = f"Failed to generate schema for tool '{self.name}': {e}"
+                    raise RuntimeError(msg) from e
 
         tool = ReallyBrokenTool("broken", "Really broken tool")
         with pytest.raises(RuntimeError, match="Failed to generate schema for tool"):

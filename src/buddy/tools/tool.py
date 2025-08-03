@@ -6,6 +6,12 @@ from openai import pydantic_function_tool
 from pydantic import BaseModel, create_model
 
 
+def _raise_no_params_error(tool_name: str) -> None:
+    """Raise error for tools with no valid parameters."""
+    msg = f"Tool '{tool_name}' has no valid parameters"
+    raise ValueError(msg)
+
+
 class Tool(ABC):
     """Abstract base class for all tools in the agent system.
 
@@ -37,9 +43,11 @@ class Tool(ABC):
             ValueError: If name is empty or contains invalid characters
         """
         if not name or not name.strip():
-            raise ValueError("Tool name cannot be empty")
+            msg = "Tool name cannot be empty"
+            raise ValueError(msg)
         if not name.replace("_", "").replace("-", "").isalnum():
-            raise ValueError("Tool name must be alphanumeric with optional underscores or hyphens")
+            msg = "Tool name must be alphanumeric with optional underscores or hyphens"
+            raise ValueError(msg)
 
         self.name = name.strip()
         self.description = description
@@ -97,14 +105,16 @@ class Tool(ABC):
                     fields[name] = (param_type, param.default)
 
             if not fields:
-                raise ValueError(f"Tool '{self.name}' has no valid parameters")
+                _raise_no_params_error(self.name)
 
             model = create_model(self.name, **fields)  # type: ignore[call-overload]
             schema = pydantic_function_tool(model)
             self._cached_schema = schema
-            return self._cached_schema
         except Exception as e:
-            raise RuntimeError(f"Failed to generate schema for tool '{self.name}': {e}") from e
+            msg = f"Failed to generate schema for tool '{self.name}': {e}"
+            raise RuntimeError(msg) from e
+        else:
+            return self._cached_schema
 
 
 if __name__ == "__main__":

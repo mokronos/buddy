@@ -1,22 +1,28 @@
 """
-Buddy - Autonomous LLM Agent with System Tools
+Buddy - Simple Agent with Tool Calling
 
-Main entry point for the Buddy CLI application.
+Main entry point demonstrating the core agent loop.
 """
 
 import asyncio
 
-from buddy.cli.client import CLIClient
+from buddy.agent.agent import Agent
+from buddy.tools.personal_info import PersonalInfoTool
 
 
-def main():
-    """Main entry point for the Buddy CLI."""
-    # TODO: Start A2A server in background
-    # TODO: Connect CLI client to A2A server
-    # For now, just run the CLI client directly
-    cli = CLIClient()
-    asyncio.run(cli.run())
+async def main():
+    """Main entry point for the simple agent demo."""
+    # Create a personal info tool
+    personal_info_tool = PersonalInfoTool()
+
+    # Create agent with the tool
+    agent = Agent(tools=[personal_info_tool])
+
+    # Run a simple prompt
+    print("Running agent with prompt: 'Tell me what you know about Basti'")
+    result = await agent.run("Tell me what you know about Basti")
+    print(f"Agent result: {result}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

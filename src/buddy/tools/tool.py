@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, get_type_hints
 
 from openai import pydantic_function_tool
-from pydantic import BaseModel, create_model
+from pydantic import create_model
 
 
 def _raise_no_params_error(tool_name: str) -> None:
@@ -115,43 +115,3 @@ class Tool(ABC):
             raise RuntimeError(msg) from e
         else:
             return self._cached_schema
-
-
-if __name__ == "__main__":
-
-    class Apple(BaseModel):
-        weight: int
-        color: str
-        shape: str
-
-    class test_tool(BaseModel):
-        a: int
-        b: int
-        c: str = "default"
-        d: float | None = None
-        e: int | None = None
-        f: list[Apple] | None = None
-        g: Apple | None = None
-
-    class TestTool(Tool):
-        def run(
-            self,
-            a: int,
-            b: int,
-            c: str = "default",
-            d: float | None = None,
-            e: int | None = None,
-            f: list[Apple] | None = None,
-            g: Apple | None = None,
-        ) -> int:
-            return a + b
-
-    name = "test_tool"
-
-    tool = TestTool(name, "Test Tool Description")
-
-    infered = tool.get_input_schema()
-
-    manual = pydantic_function_tool(test_tool)
-
-    assert infered == manual

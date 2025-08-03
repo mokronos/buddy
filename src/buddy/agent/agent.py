@@ -1,291 +1,93 @@
-"""
-Core agent implementation with LLM loop and tool support.
-"""
+"""Simple agent implementation with tool calling."""
 
 import json
-from dataclasses import asdict
+import os
 from typing import Any
 
-from buddy.agent.interfaces import Agent, AgentRequest, AgentResponse, Capability, Skill, SkillType, Tool
+from dotenv import load_dotenv
+
+from buddy.llm.llm import call_llm
+from buddy.tools.tool import Tool
+
+load_dotenv()
+
+os.environ["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
 
 
-class LLMAgent(Agent):
-    """
-    Core agent implementation with LLM loop and tool integration.
+class Agent:
+    """Simple agent that can interact with LLM and call tools."""
 
-    This agent can execute skills by using an LLM to reason about requests
-    and orchestrate tool usage to complete tasks.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        description: str,
-        version: str = "1.0.0",
-        llm_client: Any | None = None,
-        tools: list[Tool] | None = None,
-        system_prompt: str | None = None,
-    ):
-        self.name = name
-        self.description = description
-        self.version = version
-        self.llm_client = llm_client
+    def __init__(self, tools: list[Tool] | None = None, model: str = "gemini/gemini-2.0-flash-exp"):
+        """Initialize agent with tools and model."""
         self.tools = tools or []
-        self.system_prompt = system_prompt or self._default_system_prompt()
+        self.model = model
+        self.messages: list[dict[str, Any]] = []
 
-        # Create a mapping of tool names to tools for quick lookup
-        self.tool_map = {tool.get_name(): tool for tool in self.tools}
+    def add_tool(self, tool: Tool) -> None:
+        """Add a tool to the agent."""
+        self.tools.append(tool)
 
-    def _default_system_prompt(self) -> str:
-        """Generate a default system prompt based on available tools."""
-        tool_descriptions = []
+    def _get_tool_schemas(self) -> list[dict[str, Any]]:
+        """Get OpenAI-compatible tool schemas."""
+        return [tool.get_input_schema() for tool in self.tools]
+
+    def _find_tool(self, name: str) -> Tool | None:
+        """Find a tool by name."""
         for tool in self.tools:
-            tool_descriptions.append(f"- {tool.get_name()}: {tool.get_description()}")
+            if tool.name == name:
+                return tool
+        return None
 
-        tools_section = "\n".join(tool_descriptions) if tool_descriptions else "No tools available."
+    async def run(self, prompt: str, max_iterations: int = 10) -> str:
+        """Run the agent with a prompt, handling tool calls."""
+        self.messages = [{"role": "user", "content": prompt}]
 
-        return f"""You are {self.name}, {self.description}
+        for _ in range(max_iterations):
+            # Get tool schemas if we have tools
+            tools = self._get_tool_schemas() if self.tools else None
 
-Available tools:
-{tools_section}
+            # Call LLM
+            response = call_llm(messages=self.messages, model=self.model, tools=tools)
 
-When executing skills:
-1. Analyze the request and determine what needs to be done
-2. Use available tools as needed to complete the task
-3. Provide a clear, helpful response based on the results
-4. If you need to use a tool, specify the tool name and parameters in your response
+            # Extract response content and tool calls
+            message = response.choices[0].message
+            content = message.content or ""
+            tool_calls = getattr(message, "tool_calls", None)
 
-Respond in a helpful and concise manner."""
+            # Add assistant message
+            assistant_msg = {"role": "assistant", "content": content}
+            if tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in tool_calls
+                ]
+            self.messages.append(assistant_msg)
 
-    def get_capabilities(self) -> list[Capability]:
-        """Return the capabilities this agent provides."""
-        skills = [
-            Skill(
-                name="general_query",
-                description="Answer general questions and provide information",
-                skill_type=SkillType.QUERY,
-                parameters={
-                    "query": {"type": "string", "description": "The question or request"},
-                    "context": {"type": "object", "description": "Additional context", "required": False},
-                },
-                examples=["What is the weather like?", "Explain quantum computing", "Help me with a task"],
-            ),
-            Skill(
-                name="tool_execution",
-                description="Execute tasks using available tools",
-                skill_type=SkillType.ACTION,
-                parameters={
-                    "task": {"type": "string", "description": "The task to perform"},
-                    "tool_params": {"type": "object", "description": "Parameters for tools", "required": False},
-                },
-                examples=["Search for information", "Process data", "Perform calculations"],
-            ),
-        ]
+            # If no tool calls, we're done
+            if not tool_calls:
+                return content
 
-        # Add tool-specific skills
-        for tool in self.tools:
-            skills.append(
-                Skill(
-                    name=f"use_{tool.get_name()}",
-                    description=f"Use the {tool.get_name()} tool: {tool.get_description()}",
-                    skill_type=SkillType.ACTION,
-                    parameters=tool.get_parameters_schema(),
-                )
-            )
+            # Execute tool calls
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                try:
+                    arguments = json.loads(tool_call.function.arguments)
+                    tool = self._find_tool(tool_name)
 
-        return [
-            Capability(
-                name=self.name,
-                description=self.description,
-                version=self.version,
-                skills=skills,
-            )
-        ]
+                    if tool:
+                        result = tool.run(**arguments)
+                        result_str = str(result)
+                    else:
+                        result_str = f"Error: Tool '{tool_name}' not found"
 
-    async def execute_skill(self, request: AgentRequest) -> AgentResponse:
-        """Execute a specific skill with the given request."""
-        try:
-            # Route to appropriate handler based on skill name
-            if request.skill_name == "general_query":
-                return await self._handle_general_query(request)
-            elif request.skill_name == "tool_execution":
-                return await self._handle_tool_execution(request)
-            elif request.skill_name.startswith("use_"):
-                tool_name = request.skill_name[4:]  # Remove "use_" prefix
-                return await self._handle_direct_tool_use(tool_name, request)
-            else:
-                return AgentResponse(
-                    success=False,
-                    result=None,
-                    error=f"Unknown skill: {request.skill_name}",
-                )
-        except Exception as e:
-            return AgentResponse(
-                success=False,
-                result=None,
-                error=f"Error executing skill {request.skill_name}: {e!s}",
-            )
+                except Exception as e:
+                    result_str = f"Error executing {tool_name}: {e!s}"
 
-    async def _handle_general_query(self, request: AgentRequest) -> AgentResponse:
-        """Handle general query requests."""
-        query = request.parameters.get("query", "")
-        context = request.parameters.get("context", {})
+                # Add tool result message
+                self.messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result_str})
 
-        if not self.llm_client:
-            return AgentResponse(
-                success=False,
-                result=None,
-                error="No LLM client configured",
-            )
-
-        # Prepare the prompt with context
-        prompt = f"Query: {query}"
-        if context:
-            prompt += f"\nContext: {json.dumps(context, indent=2)}"
-
-        try:
-            # Use LLM to process the query
-            response = await self._call_llm(prompt)
-
-            return AgentResponse(
-                success=True,
-                result=response,
-                metadata={"skill": "general_query", "query": query},
-            )
-        except Exception as e:
-            return AgentResponse(
-                success=False,
-                result=None,
-                error=f"LLM error: {e!s}",
-            )
-
-    async def _handle_tool_execution(self, request: AgentRequest) -> AgentResponse:
-        """Handle tool execution requests with LLM reasoning."""
-        task = request.parameters.get("task", "")
-        tool_params = request.parameters.get("tool_params", {})
-
-        if not self.llm_client:
-            return AgentResponse(
-                success=False,
-                result=None,
-                error="No LLM client configured for tool execution reasoning",
-            )
-
-        # Use LLM to determine which tools to use and how
-        prompt = f"""Task: {task}
-Available tools: {[tool.get_name() for tool in self.tools]}
-Tool parameters provided: {json.dumps(tool_params, indent=2)}
-
-Determine which tool(s) to use and with what parameters to complete this task.
-Respond with a JSON object containing:
-{{
-    "tool_name": "name_of_tool_to_use",
-    "parameters": {{"param1": "value1", "param2": "value2"}},
-    "reasoning": "why this tool and these parameters"
-}}
-
-If multiple tools are needed, respond with an array of such objects."""
-
-        try:
-            llm_response = await self._call_llm(prompt)
-
-            # Parse LLM response to extract tool usage instructions
-            tool_instructions = self._parse_tool_instructions(llm_response)
-
-            # Execute the tools
-            results = []
-            for instruction in tool_instructions:
-                tool_result = await self._execute_tool(instruction["tool_name"], instruction["parameters"])
-                results.append({
-                    "tool": instruction["tool_name"],
-                    "result": tool_result,
-                    "reasoning": instruction.get("reasoning", ""),
-                })
-
-            return AgentResponse(
-                success=True,
-                result=results,
-                metadata={"skill": "tool_execution", "task": task},
-            )
-        except Exception as e:
-            return AgentResponse(
-                success=False,
-                result=None,
-                error=f"Tool execution error: {e!s}",
-            )
-
-    async def _handle_direct_tool_use(self, tool_name: str, request: AgentRequest) -> AgentResponse:
-        """Handle direct tool usage requests."""
-        if tool_name not in self.tool_map:
-            return AgentResponse(
-                success=False,
-                result=None,
-                error=f"Tool not found: {tool_name}",
-            )
-
-        try:
-            result = await self._execute_tool(tool_name, request.parameters)
-            return AgentResponse(
-                success=True,
-                result=result,
-                metadata={"skill": f"use_{tool_name}", "tool": tool_name},
-            )
-        except Exception as e:
-            return AgentResponse(
-                success=False,
-                result=None,
-                error=f"Error using tool {tool_name}: {e!s}",
-            )
-
-    async def _execute_tool(self, tool_name: str, parameters: dict[str, Any]) -> Any:
-        """Execute a specific tool with given parameters."""
-        if tool_name not in self.tool_map:
-            msg = f"Tool not found: {tool_name}"
-            raise ValueError(msg)
-
-        tool = self.tool_map[tool_name]
-        return await tool.execute(parameters)
-
-    async def _call_llm(self, prompt: str) -> str:
-        """Call the LLM with the given prompt."""
-        if not self.llm_client:
-            msg = "No LLM client configured"
-            raise ValueError(msg)
-
-        # This is a placeholder - actual implementation depends on your LLM client
-        # For now, return a mock response
-        return f"LLM response to: {prompt[:100]}..."
-
-    def _parse_tool_instructions(self, llm_response: str) -> list[dict[str, Any]]:
-        """Parse LLM response to extract tool usage instructions."""
-        try:
-            # Try to parse as JSON
-            parsed = json.loads(llm_response)
-
-            # Handle both single instruction and array of instructions
-            if isinstance(parsed, dict):
-                return [parsed]
-            elif isinstance(parsed, list):
-                return parsed
-            else:
-                msg = "Invalid instruction format"
-                raise TypeError(msg)
-        except json.JSONDecodeError:
-            # Fallback: return a basic instruction
-            return [
-                {
-                    "tool_name": "unknown",
-                    "parameters": {},
-                    "reasoning": "Could not parse LLM response",
-                }
-            ]
-
-    def get_agent_info(self) -> dict[str, Any]:
-        """Return basic information about this agent."""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "version": self.version,
-            "capabilities": [asdict(cap) for cap in self.get_capabilities()],
-            "tools": [tool.get_name() for tool in self.tools],
-        }
+        return "Maximum iterations reached"

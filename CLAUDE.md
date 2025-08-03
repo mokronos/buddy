@@ -159,6 +159,7 @@ Tool implementations are located in `src/buddy/tools/` with each tool as a separ
     - `llm.py` - LiteLLM integration
     - `context.py` - Context management and token handling
   - `main.py` - Application entry point
+  - `exp/` - Experimental code
 - `tests/` - Test suite
   - `test_agent/` - Agent loop tests
   - `test_a2a/` - A2A protocol tests

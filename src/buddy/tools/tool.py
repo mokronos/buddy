@@ -7,36 +7,104 @@ from pydantic import BaseModel, create_model
 
 
 class Tool(ABC):
-    def __init__(self, name, description):
-        self.name = name
-        self.description = description
+    """Abstract base class for all tools in the agent system.
 
-    def __call__(self, *args, **kwargs):
+    Tools are functions that the agent can call to interact with external systems,
+    perform computations, or gather information. Each tool automatically generates
+    an OpenAI-compatible function schema from its run method's type hints.
+
+    Example:
+        class CalculatorTool(Tool):
+            def run(self, a: int, b: int, operation: str = "add") -> int:
+                if operation == "add":
+                    return a + b
+                elif operation == "multiply":
+                    return a * b
+                return 0
+
+        tool = CalculatorTool("calculator", "Performs basic math operations")
+        schema = tool.get_input_schema()  # Auto-generated from type hints
+    """
+
+    def __init__(self, name: str, description: str) -> None:
+        """Initialize the tool with a name and description.
+
+        Args:
+            name: Unique identifier for the tool
+            description: Human-readable description of what the tool does
+
+        Raises:
+            ValueError: If name is empty or contains invalid characters
+        """
+        if not name or not name.strip():
+            raise ValueError("Tool name cannot be empty")
+        if not name.replace("_", "").replace("-", "").isalnum():
+            raise ValueError("Tool name must be alphanumeric with optional underscores or hyphens")
+
+        self.name = name.strip()
+        self.description = description
+        self._cached_schema: Any = None
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Make the tool callable as a function."""
         return self.run(*args, **kwargs)
 
     @abstractmethod
-    def run(self, *args, **kwargs):
+    def run(self, *args: Any, **kwargs: Any) -> Any:
+        """Execute the tool's functionality.
+
+        This method must be implemented by subclasses. The method signature
+        with type hints will be used to automatically generate the tool's
+        input schema.
+
+        Returns:
+            The result of the tool execution
+        """
         pass
 
-    def get_input_schema(self):
-        params = inspect.signature(self.run).parameters
-        type_hints = get_type_hints(self.run)
+    def get_input_schema(self) -> Any:
+        """Generate OpenAI-compatible function schema from the run method.
 
-        fields = {}
+        Uses inspect and type hints to automatically create a Pydantic model
+        and convert it to an OpenAI function tool schema. Results are cached
+        after first generation.
 
-        for name, param in params.items():
-            if name == "self":
-                continue
+        Returns:
+            OpenAI function tool schema
 
-            param_type = type_hints.get(name, Any)
+        Raises:
+            ValueError: If the tool has no valid parameters
+            RuntimeError: If schema generation fails for any reason
+        """
+        if self._cached_schema is not None:
+            return self._cached_schema
 
-            if param.default is inspect.Parameter.empty:
-                fields[name] = (param_type, ...)
-            else:
-                fields[name] = (param_type, param.default)
+        try:
+            params = inspect.signature(self.run).parameters
+            type_hints = get_type_hints(self.run)
 
-        model = create_model(self.name, **fields)
-        return pydantic_function_tool(model)
+            fields = {}
+
+            for name, param in params.items():
+                if name == "self":
+                    continue
+
+                param_type = type_hints.get(name, Any)
+
+                if param.default is inspect.Parameter.empty:
+                    fields[name] = (param_type, ...)
+                else:
+                    fields[name] = (param_type, param.default)
+
+            if not fields:
+                raise ValueError(f"Tool '{self.name}' has no valid parameters")
+
+            model = create_model(self.name, **fields)  # type: ignore[call-overload]
+            schema = pydantic_function_tool(model)
+            self._cached_schema = schema
+            return self._cached_schema
+        except Exception as e:
+            raise RuntimeError(f"Failed to generate schema for tool '{self.name}': {e}") from e
 
 
 if __name__ == "__main__":
@@ -65,7 +133,7 @@ if __name__ == "__main__":
             e: int | None = None,
             f: list[Apple] | None = None,
             g: Apple | None = None,
-        ):
+        ) -> int:
             return a + b
 
     name = "test_tool"

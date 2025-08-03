@@ -184,6 +184,7 @@ Tool implementations are located in `src/buddy/tools/` with each tool as a separ
   - ❌ Wrong: Adding co-authorship or listing all changes in commit message
   - ❌ Wrong: Multi-line commit messages with detailed bullet points
 - Use `git add -A` instead of `git add .` to stage all changes
+- Dont use `Optional[]` for optional arguments, use `| None` instead
 
 ## Tool Development
 

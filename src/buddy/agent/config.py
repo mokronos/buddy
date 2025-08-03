@@ -11,7 +11,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from buddy.agent.llm_client import MODEL_PRESETS, LiteLLMClient, create_llm_client
+from buddy.llm.llm_client import MODEL_PRESETS, LiteLLMClient, create_llm_client
 
 load_dotenv()
 

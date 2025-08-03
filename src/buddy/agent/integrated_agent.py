@@ -10,8 +10,8 @@ from typing import Any
 
 from buddy.agent.agent import LLMAgent
 from buddy.agent.interfaces import AgentRequest, AgentResponse
-from buddy.agent.llm_client import LiteLLMClient, create_llm_client
 from buddy.agent.tool_bridge import A2AToolBridge, create_integrated_tool_system
+from buddy.llm.llm_client import LiteLLMClient, create_llm_client
 from buddy.tools.tool import Tool as BuddyTool
 
 

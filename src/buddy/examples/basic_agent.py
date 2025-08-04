@@ -19,7 +19,8 @@ async def main():
     agent = Agent(tools=[personal_info_tool])
 
     # Run agent with prompt
-    prompt = "How old is Basti? Use the personal_information tool."
+    prompt = "Who is John Hopper? Use the personal_info tool."
+    # prompt = "Whats the weather in berlin currently?"
     print(f"Prompt: {prompt}")
 
     result = await agent.run(prompt)

@@ -18,7 +18,8 @@ class PersonalInfoTool(Tool):
         """
         # Simple database of personal information
         people_info = {
-            "basti": "29 years old, works as a data scientist in nuremberg in germany and has a sister named caro."
+            "basti": "29 years old, works as a data scientist in nuremberg in germany and has a sister named caro.",
+            "john": "29 years old, works as a data scientist in nuremberg in germany and has a sister named caro.",
         }
 
         # Convert to lowercase for case-insensitive matching

@@ -31,6 +31,9 @@ dependencies = [
     "a2a-cli>=0.1.12",
     "a2a-sdk>=0.2.8",
     "uvicorn>=0.34.3",
+    "pydantic-ai[mcp]>=0.0.18",
+    "spotipy>=2.25.1",
+    "fastmcp>=2.11.2",
 ]
 
 [project.urls]

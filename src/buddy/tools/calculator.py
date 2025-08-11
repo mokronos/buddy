@@ -1,6 +1,3 @@
-from buddy.tools.tool import Tool
-
-
 class CalculatorTool(Tool):
     """Tool to perform basic mathematical operations."""
 

@@ -21,3 +21,11 @@ Follow these conventions at all times:
 ## Comments
 
 - Only add comments to code that is not self-explanatory
+
+## Typing
+
+- Prefer built-in generics and PEP 604 unions:
+  - Use `list`, `dict`, `set`, `tuple` instead of `typing.List`, `typing.Dict`, ...
+  - Use `str | None` instead of `Optional[str]`
+  - Use `collections.abc` for callables/iterables: `Callable`, `Generator`, `Iterable`, ...
+  - Keep `from __future__ import annotations` in modules defining type hints

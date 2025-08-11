@@ -186,6 +186,12 @@ Tool implementations are located in `src/buddy/tools/` with each tool as a separ
   - ❌ Wrong: Multi-line commit messages with detailed bullet points
 - Use `git add -A` instead of `git add .` to stage all changes
 - Dont use `Optional[]` for optional arguments, use `| None` instead
+ - Typing conventions:
+   - Prefer built-in generics `list`, `dict`, `set`, `tuple` over `typing.List`, `typing.Dict`, ...
+   - Prefer PEP 604 unions: `T | None` over `Optional[T]`
+   - Import callables/iterables from `collections.abc` where appropriate (`Callable`, `Generator`, `Iterable`)
+   - Keep `from __future__ import annotations` in modules with type hints
+- **IMPORTANT**: When pre-commit hooks fail during `git commit`, no commit is created. Never use `git commit --amend` in this case as it will modify the previous existing commit. Instead: stage the hook fixes with `git add -A` and run `git commit` again (not `--amend`)
 
 ## Tool Development
 

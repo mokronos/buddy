@@ -1,62 +1,41 @@
-"""
-Basic agent example implemented with PydanticAI.
-
-This example demonstrates a minimal agent with a single tool implemented via
-PydanticAI's @agent.tool decorator. It requires an `OPENAI_API_KEY` in the
-environment to run.
-"""
-
-from __future__ import annotations
-
 import asyncio
+from collections.abc import AsyncIterable
 from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.mcp import CallToolFunc, MCPServerStreamableHTTP, ToolResult
+from pydantic_ai.mcp import CallToolFunc, ToolResult
+from pydantic_ai.messages import (
+    AgentStreamEvent,
+    FinalResultEvent,
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
+    HandleResponseEvent,
+    PartDeltaEvent,
+    PartStartEvent,
+    TextPartDelta,
+    ThinkingPartDelta,
+    ToolCallPartDelta,
+)
+from pydantic_ai.toolsets import FunctionToolset
 
 load_dotenv()
 
 
 class AgentContext(BaseModel):
-    spotify_client_id: str
-    spotify_client_secret: str
-    spotify_redirect_uri: str
+    current_task: str
 
 
-agent: Agent[Any, Any] = Agent(
+agent = Agent(
     model="google-gla:gemini-2.5-flash",
     deps_type=AgentContext,
     system_prompt=("You are a helpful assistant."),
 )
 
 
-@agent.tool
-def personal_info(ctx: RunContext[Any], name: str) -> str:
-    """Retrieve personal information about a person by name.
-
-    The database is intentionally tiny for demonstration purposes.
-    """
-    people_info: dict[str, str] = {
-        "basti": "29 years old, works as a data scientist in Nuremberg, Germany, and has a sister named Caro.",
-        "john": "29 years old, works as a data scientist in Nuremberg, Germany, and has a sister named Caro.",
-        "john hopper": "29 years old, works as a data scientist in Nuremberg, Germany, and has a sister named Caro.",
-    }
-
-    normalized_name = name.lower().strip()
-
-    # Basic normalization to map variants like "john hopper" -> "john"
-    alias_map: dict[str, str] = {
-        "john hopper": "john",
-    }
-    normalized_key = alias_map.get(normalized_name, normalized_name)
-
-    return people_info.get(normalized_key, f"No information available for '{name}'")
-
-
 async def process_tool_call(
-    ctx: RunContext[int],
+    ctx: RunContext[AgentContext],
     call_tool: CallToolFunc,
     name: str,
     tool_args: dict[str, Any],
@@ -65,26 +44,57 @@ async def process_tool_call(
     return await call_tool(name, tool_args, {"deps": ctx.deps})
 
 
+def task_tracker(ctx: RunContext[AgentContext], task: str) -> str:
+    """A tool that tracks the current task."""
+    ctx.deps.current_task = task
+
+    return "Task successfully updated. Current task is now: " + task
+
+
+basic_tools = FunctionToolset(
+    tools=[
+        task_tracker,
+    ]
+)
+
+
+async def event_stream_handler(
+    ctx: RunContext[AgentContext],
+    event_stream: AsyncIterable[AgentStreamEvent | HandleResponseEvent],
+):
+    async for event in event_stream:
+        if isinstance(event, PartStartEvent):
+            print(f"[Request] Starting part {event.index}: {event.part!r}")
+        elif isinstance(event, PartDeltaEvent):
+            if isinstance(event.delta, TextPartDelta):
+                print(f"[Request] Part {event.index} text delta: {event.delta.content_delta!r}")
+            elif isinstance(event.delta, ThinkingPartDelta):
+                print(f"[Request] Part {event.index} thinking delta: {event.delta.content_delta!r}")
+            elif isinstance(event.delta, ToolCallPartDelta):
+                print(f"[Request] Part {event.index} args delta: {event.delta.args_delta}")
+        elif isinstance(event, FunctionToolCallEvent):
+            print(
+                f"[Tools] The LLM calls tool={event.part.tool_name!r} with args={event.part.args} (tool_call_id={event.part.tool_call_id!r})"
+            )
+        elif isinstance(event, FunctionToolResultEvent):
+            print(f"[Tools] Tool call {event.tool_call_id!r} returned => {event.result.content}")
+        elif isinstance(event, FinalResultEvent):
+            print(f"[Result] The model starting producing a final result (tool_name={event.tool_name})")
+
+
 async def main() -> None:
-    # prompt = "Play your favorite song. Imagine you have one. Please just play one. Don't tell me you don't have one. Play it on my pc."
-    prompt = "Please list all the available spotify devices."
+    # prompt = "Which of these tasks is the most important? A. Clean my house B. Play a video game. C. Eat (im really hungry). After you decided, put the task as the current task with the task tracker tool."
+    # prompt = "What tools do you have available?"
+    prompt = "Please set 'Cleaning house' as the current task."
     print(f"Prompt: {prompt}")
 
-    server = MCPServerStreamableHTTP("http://127.0.0.1:8000/mcp", process_tool_call=process_tool_call)
+    deps = AgentContext(current_task="")
 
-    SPOTIPY_CLIENT_ID = "b2e6ae7d55254a89a48c29ecaa60ff88"
-    SPOTIPY_CLIENT_SECRET = "e494424000e540efa9c472c11162193c"
-    SPOTIPY_REDIRECT_URI = "http://127.0.0.1:9090"
-
-    deps = AgentContext(
-        spotify_client_id=SPOTIPY_CLIENT_ID,
-        spotify_client_secret=SPOTIPY_CLIENT_SECRET,
-        spotify_redirect_uri=SPOTIPY_REDIRECT_URI,
-    )
-
-    async with agent.iter(prompt, toolsets=[server], deps=deps) as agent_run:
-        async for node in agent_run:
-            print(node)
+    async with agent.run_stream(
+        prompt, toolsets=[basic_tools], event_stream_handler=event_stream_handler, deps=deps
+    ) as agent_run:
+        async for output in agent_run.stream_text():
+            print(f"[Output] {output}")
 
 
 if __name__ == "__main__":

@@ -34,6 +34,9 @@ dependencies = [
     "pydantic-ai[mcp]>=0.0.18",
     "spotipy>=2.25.1",
     "fastmcp>=2.11.2",
+    "fasta2a>=0.5.0",
+    "python-a2a>=0.5.9",
+    "pydantic-ai-slim[ag-ui]>=0.6.2",
 ]
 
 [project.urls]
@@ -123,6 +126,10 @@ ignore = [
     "E501",
     # DoNotAssignLambda
     "E731",
+    # RedefinedConstant
+    "F811",
+    # LongExceptions
+    "TRY003",
 ]
 
 [tool.ruff.lint.per-file-ignores]

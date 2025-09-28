@@ -21,6 +21,11 @@ It aims to provide a versatile assistant capable of performing a wide range of t
 - **Planner / Notetaking Application:** Helps organize tasks and thoughts efficiently.
 - **Model Context Protocol (MCP) Installer/Manager:** Manages and installs MCP servers, and adds them to the model context
 - **Code Interpreter / Python REPL:** Allows execution and testing of code for the LLM
+- **Settings Manager:** Manages the settings of the System
+
+# Important Components
+
+- Context Manager: Manages the context of the LLM, including the message history(, system message), and tools.
 
 # Purpose
 

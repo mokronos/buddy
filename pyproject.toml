@@ -132,6 +132,7 @@ ignore = [
     "F811",
     # LongExceptions
     "TRY003",
+    "C901",
 ]
 
 [tool.ruff.lint.per-file-ignores]

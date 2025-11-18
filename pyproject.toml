@@ -10,9 +10,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -21,24 +18,16 @@ classifiers = [
 dependencies = [
     "rich>=10.0.0",
     "requests>=2.31.0",
-    "pytest>=7.0.0",
     "python-dotenv>=1.0.1",
-    "litellm>=1.70.0",
-    "openai>=1.68.2",
-    "langgraph>=0.4.8",
-    # "langgraph==0.3.31",
-    "matplotlib>=3.10.3",
-    "a2a-cli>=0.1.12",
     "a2a-sdk>=0.2.8",
-    "uvicorn>=0.34.3",
     "spotipy>=2.25.1",
     "fastmcp>=2.11.2",
-    "fasta2a>=0.5.0",
-    "python-a2a>=0.5.9",
-    "pydantic-ai-slim[ag-ui]>=0.6.2",
     "beautifulsoup4>=4.14.0",
     "cloudscraper>=1.2.71",
     "pydantic-ai",
+    "fastapi[standard]>=0.119.1",
+    "devtools>=0.12.2",
+    "pydantic-ai-slim[google]>=1.18.0",
 ]
 
 [project.urls]
@@ -148,5 +137,5 @@ skip_empty = true
 branch = true
 source = ["src"]
 
-[tool.uv.sources]
-pydantic-ai = { path = "../pydantic-ai", editable = true }
+# [tool.uv.sources]
+# pydantic-ai = { path = "../pydantic-ai", editable = true }

@@ -4,7 +4,7 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, Part, TaskState, TextPart
+from a2a.types import AgentCapabilities, AgentCard, Part, TaskState
 from a2a.utils import new_agent_text_message, new_task
 from dotenv import load_dotenv
 from pydantic_ai import (
@@ -15,9 +15,13 @@ from pydantic_ai import (
     PartStartEvent,
     TextPartDelta,
     ToolCallPart,
-    ToolCallPartDelta,
+    TextPart,
 )
 from pydantic_ai.toolsets import FunctionToolset
+
+from buddy.a2a.utils import simple_text_part
+
+from uuid import uuid4
 
 load_dotenv()
 
@@ -78,69 +82,44 @@ class PyAIAgentExecutor(AgentExecutor):
 
         output = "Agent didn't produce any output"
         res = None
+        cur_artifact_id = None
 
         async for event in agent.run_stream_events(query):
             pprint(event)
 
             if isinstance(event, PartStartEvent):
                 part = event.part
+                cur_artifact_id = str(uuid4())
                 if isinstance(part, TextPart):
                     await updater.add_artifact(
-                        [Part(root=TextPart(text=part.text))],
+                        [simple_text_part(part.content)],
                         name="output_start",
+                        artifact_id=cur_artifact_id,
                     )
-                # if isinstance(part, ToolCallPart):
-                #     await updater.add_artifact(
-                #         [Part(root=TextPart(text=part.tool_name))],
-                #         name="start_tool",
-                #     )
-                #     await updater.add_artifact(
-                #         [Part(root=TextPart(text=str(part.args)))],
-                #         name="start_tool",
-                #     )
             if isinstance(event, PartDeltaEvent):
                 delta = event.delta
 
                 if isinstance(delta, TextPartDelta):
                     await updater.add_artifact(
-                        [Part(root=TextPart(text=delta.content_delta))],
+                        [simple_text_part(delta.content_delta)],
                         name="output_delta",
                         append=True,
+                        artifact_id=cur_artifact_id,
                     )
 
-                # if isinstance(delta, ToolCallPartDelta):
-                #     if delta.tool_name_delta:
-                #         await updater.add_artifact(
-                #             [Part(root=TextPart(text=delta.tool_name_delta))],
-                #             name="delta_tool",
-                #             append=True,
-                #         )
-                #     if delta.args_delta:
-                #         await updater.add_artifact(
-                #             [Part(root=TextPart(text=str(delta.args_delta)))],
-                #             name="delta_tool",
-                #             append=True,
-                #         )
 
             # end just repeats the whole part (probably should still send, for easier handling on client, but different artifact)
             if isinstance(event, PartEndEvent):
                 part = event.part
                 if isinstance(part, TextPart):
                     await updater.add_artifact(
-                        [Part(root=TextPart(text=part.text))],
+                        [simple_text_part(part.content)],
                         name="output_end",
+                        artifact_id=cur_artifact_id,
                     )
                 if isinstance(part, ToolCallPart):
 
                     await updater.update_status(TaskState.working, message=new_agent_text_message(f"Calling tool: {part.tool_name} with args: {part.args}"))
-                    # await updater.add_artifact(
-                    #     [Part(root=TextPart(text=part.tool_name))],
-                    #     name="end_tool",
-                    # )
-                    # await updater.add_artifact(
-                    #     [Part(root=TextPart(text=str(part.args)))],
-                    #     name="end_tool",
-                    # )
 
             if isinstance(event, AgentRunResultEvent):
                 res = event.result
@@ -149,7 +128,7 @@ class PyAIAgentExecutor(AgentExecutor):
             output = res.output
 
         await updater.add_artifact(
-            [Part(root=TextPart(text=output))],
+            [simple_text_part(output)],
             name="full_output",
         )
 

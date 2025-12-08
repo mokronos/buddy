@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from pydantic_ai import (
     Agent,
     AgentRunResultEvent,
+    FunctionToolResultEvent,
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
@@ -26,6 +27,8 @@ from uuid import uuid4
 load_dotenv()
 
 from devtools import pprint
+import subprocess
+import tempfile
 
 
 def random_tool1(arg1: str, arg2: str):
@@ -34,6 +37,38 @@ def random_tool1(arg1: str, arg2: str):
     time.sleep(3)
     return f"Result of random long running tool call with args: {arg1} | {arg2}" * 20
 
+def execute_ts_code(code: str):
+    """
+    Executes code in a temporary file and returns the output.
+    Make sure to console.log everything you want to see in the output.
+    """
+    # 1. Create a temporary TS file
+    with tempfile.NamedTemporaryFile(suffix=".ts", delete=False, mode='w') as temp:
+        temp.write(code)
+        temp_path = temp.name
+
+    try:
+        # 2. Run via Deno (V8) with strict sandbox flags
+        # --no-prompt: Fails instead of asking for permission
+        # --allow-none: Blocks all network/file/env access
+        result = subprocess.run(
+            ["deno", "run", "--no-prompt", temp_path],
+            capture_output=True,
+            text=True,
+            timeout=5 # prevent infinite loops
+        )
+        
+        if result.returncode != 0:
+            return f"Error: {result.stderr}"
+        
+        return result.stdout.strip()
+
+    except subprocess.TimeoutExpired:
+        return "Error: Script execution timed out."
+    finally:
+        # 3. Cleanup
+        os.remove(temp_path)
+
 
 tool_set = FunctionToolset(
     tools=[
@@ -41,9 +76,15 @@ tool_set = FunctionToolset(
     ],
 )
 
+coding_tools = FunctionToolset(
+    tools=[
+        execute_ts_code,
+    ],
+)
+
 agent = Agent(
     model="google-gla:gemini-2.5-flash",
-    toolsets=[tool_set],
+    toolsets=[tool_set, coding_tools],
 )
 
 port = os.environ.get("PORT", 10001)
@@ -107,7 +148,6 @@ class PyAIAgentExecutor(AgentExecutor):
                         artifact_id=cur_artifact_id,
                     )
 
-
             # end just repeats the whole part (probably should still send, for easier handling on client, but different artifact)
             if isinstance(event, PartEndEvent):
                 part = event.part
@@ -120,6 +160,18 @@ class PyAIAgentExecutor(AgentExecutor):
                 if isinstance(part, ToolCallPart):
 
                     await updater.update_status(TaskState.working, message=new_agent_text_message(f"Calling tool: {part.tool_name} with args: {part.args}"))
+
+            if isinstance(event, FunctionToolResultEvent):
+                res = event.result
+
+                text = f"Tool {res.tool_name} returned: {res.content}"
+
+                await updater.add_artifact(
+                    [simple_text_part(text)],
+                    name="tool_result",
+                    artifact_id=cur_artifact_id,
+                )
+                await updater.update_status(TaskState.working, message=new_agent_text_message("Agent thinking ..."))
 
             if isinstance(event, AgentRunResultEvent):
                 res = event.result

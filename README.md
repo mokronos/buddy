@@ -23,6 +23,13 @@ It aims to provide a versatile assistant capable of performing a wide range of t
 - **Code Interpreter / Python REPL:** Allows execution and testing of code for the LLM
 - **Settings Manager:** Manages the settings of the System
 
+# Code tool execution
+
+- All tools should be available as packages
+- ts > python
+- load docs/definitions dynamically
+- somehow attach user specific tokens in api calls
+
 # Important Components
 
 - Context Manager: Manages the context of the LLM, including the message history(, system message), and tools.

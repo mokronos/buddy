@@ -1,16 +1,18 @@
+import json
 import os
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, Part, TaskState
+from a2a.types import AgentCapabilities, AgentCard, TaskState
 from a2a.utils import new_agent_text_message, new_task
 from dotenv import load_dotenv
 from pydantic_ai import (
     Agent,
     AgentRunResultEvent,
     FunctionToolResultEvent,
+    ModelMessagesTypeAdapter,
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
@@ -19,8 +21,10 @@ from pydantic_ai import (
     TextPart,
 )
 from pydantic_ai.toolsets import FunctionToolset
+from pydantic_core import to_jsonable_python
 
 from buddy.a2a.utils import simple_text_part
+from buddy.tools.web_search import web_search, fetch_web_page
 
 from uuid import uuid4
 
@@ -82,9 +86,16 @@ coding_tools = FunctionToolset(
     ],
 )
 
+web_search_tools = FunctionToolset(
+    tools=[
+        web_search,
+        fetch_web_page,
+    ],
+)
+
 agent = Agent(
     model="google-gla:gemini-2.5-flash",
-    toolsets=[tool_set, coding_tools],
+    toolsets=[tool_set, coding_tools, web_search_tools],
 )
 
 port = os.environ.get("PORT", 10001)
@@ -118,6 +129,13 @@ class PyAIAgentExecutor(AgentExecutor):
 
         updater = TaskUpdater(event_queue, task.id, context.context_id)
 
+        msg_history = []
+        if os.path.exists(f"hist/{context.context_id}.json"):
+            with open(f"hist/{context.context_id}.json", "r") as f:
+                j = json.load(f)
+                msg_history = ModelMessagesTypeAdapter.validate_python(j)
+
+
         await event_queue.enqueue_event(task)
         await updater.update_status(TaskState.working, message=new_agent_text_message(f"Recieved new task with query: {query}"))
 
@@ -125,7 +143,7 @@ class PyAIAgentExecutor(AgentExecutor):
         res = None
         cur_artifact_id = None
 
-        async for event in agent.run_stream_events(query):
+        async for event in agent.run_stream_events(query, message_history=msg_history):
             pprint(event)
 
             if isinstance(event, PartStartEvent):
@@ -178,6 +196,16 @@ class PyAIAgentExecutor(AgentExecutor):
 
         if res and res.output:
             output = res.output
+
+        os.makedirs("hist", exist_ok=True)
+
+        msgs = res.all_messages()
+
+        msgs_json = to_jsonable_python(msgs)
+
+        with open(f"hist/{context.context_id}.json", "w") as f:
+            json.dump(msgs_json, f)
+
 
         await updater.add_artifact(
             [simple_text_part(output)],

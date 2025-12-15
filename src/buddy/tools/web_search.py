@@ -61,6 +61,10 @@ def web_search(query: str) -> str:
 
 
 def fetch_web_page(url: str) -> str:
+    """
+    Fetches the HTML content of a web page.
+    Does not work for direct urls to pdfs, images, etc.!
+    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
     }

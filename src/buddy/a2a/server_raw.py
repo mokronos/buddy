@@ -93,9 +93,17 @@ web_search_tools = FunctionToolset(
     ],
 )
 
+instructions = """You are a helpful assistant.
+When searching online for information, try multiple times if you can't find what you're looking for.
+But after max 5 attempts, answer with your current information and don't try to search again.
+"""
+
 agent = Agent(
-    model="google-gla:gemini-2.5-flash",
+    # model="google-gla:gemini-2.5-flash-lite",
+    # model="openrouter:mistralai/devstral-2512:free",
+    model="openrouter:kwaipilot/kat-coder-pro:free",
     toolsets=[tool_set, coding_tools, web_search_tools],
+    instructions=instructions,
 )
 
 port = os.environ.get("PORT", 10001)

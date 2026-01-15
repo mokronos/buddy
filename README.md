@@ -41,8 +41,14 @@ This design enables continuous learning and improvement, making the assistant mo
 
 # Getting Started
 
-To run the program just run
+To run the server:
 
 ```
-uv run src/buddy/main.py
+uv run buddy server
+```
+
+To connect with the CLI client:
+
+```
+uv run buddy chat
 ```

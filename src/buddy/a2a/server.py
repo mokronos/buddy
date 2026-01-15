@@ -33,14 +33,13 @@ import subprocess
 import tempfile
 
 
-
 def execute_ts_code(code: str):
     """
     Executes code in a temporary file and returns the output.
     Make sure to console.log everything you want to see in the output.
     """
     # 1. Create a temporary TS file
-    with tempfile.NamedTemporaryFile(suffix=".ts", delete=False, mode='w') as temp:
+    with tempfile.NamedTemporaryFile(suffix=".ts", delete=False, mode="w") as temp:
         temp.write(code)
         temp_path = temp.name
 
@@ -52,12 +51,12 @@ def execute_ts_code(code: str):
             ["deno", "run", "--no-prompt", temp_path],
             capture_output=True,
             text=True,
-            timeout=5 # prevent infinite loops
+            timeout=5,  # prevent infinite loops
         )
-        
+
         if result.returncode != 0:
             return f"Error: {result.stderr}"
-        
+
         return result.stdout.strip()
 
     except subprocess.TimeoutExpired:
@@ -91,7 +90,6 @@ class PyAIAgentExecutor(AgentExecutor):
         self.agent = agent
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-
         query = context.get_user_input()
         print("\n\n\n Recieved new task with query: ", query, "\n")
         task = context.current_task or new_task(context.message)
@@ -104,15 +102,16 @@ class PyAIAgentExecutor(AgentExecutor):
                 j = json.load(f)
                 msg_history = ModelMessagesTypeAdapter.validate_python(j)
 
-
         await event_queue.enqueue_event(task)
-        await updater.update_status(TaskState.working, message=new_agent_text_message(f"Recieved new task with query: {query}"))
+        await updater.update_status(
+            TaskState.working, message=new_agent_text_message(f"Recieved new task with query: {query}")
+        )
 
         output = "Agent didn't produce any output"
         res = None
         cur_artifact_id = None
 
-        async for event in agent.run_stream_events(query, message_history=msg_history):
+        async for event in self.agent.run_stream_events(query, message_history=msg_history):
             pprint(event)
 
             if isinstance(event, PartStartEvent):
@@ -145,8 +144,10 @@ class PyAIAgentExecutor(AgentExecutor):
                         artifact_id=cur_artifact_id,
                     )
                 if isinstance(part, ToolCallPart):
-
-                    await updater.update_status(TaskState.working, message=new_agent_text_message(f"Calling tool: {part.tool_name} with args: {part.args}"))
+                    await updater.update_status(
+                        TaskState.working,
+                        message=new_agent_text_message(f"Calling tool: {part.tool_name} with args: {part.args}"),
+                    )
 
             if isinstance(event, FunctionToolResultEvent):
                 res = event.result
@@ -175,7 +176,6 @@ class PyAIAgentExecutor(AgentExecutor):
         with open(f"hist/{context.context_id}.json", "w") as f:
             json.dump(msgs_json, f)
 
-
         await updater.add_artifact(
             [simple_text_part(output)],
             name="full_output",
@@ -188,7 +188,6 @@ class PyAIAgentExecutor(AgentExecutor):
 
 
 def create_app(agent: Agent):
-
     request_handler = DefaultRequestHandler(
         agent_executor=PyAIAgentExecutor(
             agent=agent,

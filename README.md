@@ -1,48 +1,43 @@
 # buddy
 
-[![Release](https://img.shields.io/github/v/release/mokronos/buddy)](https://img.shields.io/github/v/release/mokronos/buddy)
-[![Build status](https://img.shields.io/github/actions/workflow/status/mokronos/buddy/main.yml?branch=main)](https://github.com/mokronos/buddy/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/mokronos/buddy/branch/main/graph/badge.svg)](https://codecov.io/gh/mokronos/buddy)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/mokronos/buddy)](https://img.shields.io/github/commit-activity/m/mokronos/buddy)
-[![License](https://img.shields.io/github/license/mokronos/buddy)](https://img.shields.io/github/license/mokronos/buddy)
-
-An autonomous LLM agent with comprehensive system tools
-
-- **Github repository**: <https://github.com/mokronos/buddy/>
-- **Documentation** <https://mokronos.github.io/buddy/>
+Personal AI assistant.
 
 # Repository Overview
 
-This repository offers a command-line interface (CLI) to interact with a large language model (LLM) enhanced with a suite of powerful tools.
-It aims to provide a versatile assistant capable of performing a wide range of tasks with adaptability and self-improvement capabilities.
-
-# Tools
-
-- **Planner / Notetaking Application:** Helps organize tasks and thoughts efficiently.
-- **Model Context Protocol (MCP) Installer/Manager:** Manages and installs MCP servers, and adds them to the model context
-- **Code Interpreter / Python REPL:** Allows execution and testing of code for the LLM
-- **Settings Manager:** Manages the settings of the System
-
-# Code tool execution
-
-- All tools should be available as packages
-- ts > python
-- load docs/definitions dynamically
-- somehow attach user specific tokens in api calls
-
-# Important Components
-
-- Context Manager: Manages the context of the LLM, including the message history(, system message), and tools.
+This repository offers a personal ai assistant.
 
 # Purpose
 
 The primary goal is to build a JARVIS-like assistant that not only performs diverse tasks but also has the ability to:
 
 - Adjust its own system prompt dynamically.
-- Potentially fine-tune itself over time.
 - Learn new behaviors and create reusable tools or behaviors for future use.
 
 This design enables continuous learning and improvement, making the assistant more effective and personalized with use.
+
+# Tools
+
+- **Planner / Notetaking Application:** Helps organize tasks and thoughts efficiently.
+- **Model Context Protocol (MCP) Installer/Manager:** Manages and installs MCP servers, and adds them to the model context
+- **Code Interpreter / Typescript REPL:** Allows execution of code for accessing/managing local files or accessing api's.
+- **Settings Manager:** Manages the settings of the System itself.
+    - get/set key/value pairs
+- **Web Search:** Allows searching the web for information.
+    - web_search: just searching (with summaries)
+    - web_fetch: fetching full pages
+
+# Potential Code tool execution
+
+- All tools should be available as ts packages
+    - model can just write code with them
+    - e.g. fetch page --> parse with code --> console.log result --> read it
+- typescript instead of python
+- load docs/definitions dynamically
+
+# Important Components
+
+- Context Manager: Manages the context of the LLM, including the message history (system message, user messages, tool messages), and tools.
+- Reflexion: Model should reflect on its last x actions and feedback from user and adjust its prompt and skills accordingly. Could also include writing a new tool/skill.
 
 # Getting Started
 
@@ -51,7 +46,3 @@ To run the program just run
 ```
 uv run src/buddy/main.py
 ```
-
-# Development
-
-Check out the Makefile for some useful commands.

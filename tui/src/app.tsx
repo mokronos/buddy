@@ -36,10 +36,6 @@ export const App = () => {
   const finalOutputRenderedRef = useRef(false);
 
   useKeyboard((key) => {
-    if (key.name === "escape") {
-      process.exit(0);
-    }
-
     if (key.ctrl && key.name === "w") {
       const input = inputRef.current;
       if (!input) {

@@ -28,6 +28,16 @@ const roleLabel = (role: ChatMessage["role"]) => {
   return "Agent";
 };
 
+const roleColor = (role: ChatMessage["role"]) => {
+  if (role === "user") {
+    return "#7aa2f7";
+  }
+  if (role === "status") {
+    return "#f6c177";
+  }
+  return "#9ece6a";
+};
+
 export const ChatPanel = ({
   messages,
   inputKey,
@@ -46,6 +56,7 @@ export const ChatPanel = ({
             <text
               key={message.id}
               content={`${roleLabel(message.role)}: ${message.content}${message.streaming ? "▌" : ""}`}
+              style={{ fg: roleColor(message.role) }}
             />
           ))
         )}
@@ -61,7 +72,7 @@ export const ChatPanel = ({
         />
       </box>
       <box style={{ marginTop: 1 }}>
-        <text content={isSending ? "Sending..." : "Enter to send • ESC to quit"} />
+        <text content={isSending ? "Sending..." : "Enter to send • Ctrl+C to quit"} />
         <text content="/connect to retry server connection" />
       </box>
     </box>

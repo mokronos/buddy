@@ -26,7 +26,7 @@ export const StatusPanel = ({
       {taskId ? <text content={`Task: ${taskId}`} /> : <text content="Task: (none)" />}
       {contextId ? <text content={`Context: ${contextId}`} /> : <text content="Context: (none)" />}
       {error ? <text content={`Error: ${error}`} /> : null}
-      <text content="Press ESC to quit." />
+      <text content="Ctrl+C to quit." />
     </box>
   );
 };

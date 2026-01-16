@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, cast
 
 from buddy.session_store import SessionStore
 
@@ -13,13 +13,14 @@ class TodoItem(TypedDict):
     id: str
 
 
-_STORE = SessionStore(Path(".buddy") / "sessions.db")
+_STORE = SessionStore(Path("sessions.db"))
 _SCOPE = "default"
 
 
 def get_todos() -> list[TodoItem]:
     todos = _STORE.load_todos(_SCOPE)
-    return [todo for todo in todos if isinstance(todo, dict)]
+    filtered = [todo for todo in todos if isinstance(todo, dict)]
+    return cast(list[TodoItem], filtered)
 
 
 def set_todos(todos: list[TodoItem]) -> None:

@@ -71,7 +71,7 @@ def execute_ts_code(code: str):
 
 port = os.environ.get("PORT", 10001)
 
-session_store = SessionStore(Path(".buddy") / "sessions.db")
+session_store = SessionStore(Path("sessions.db"))
 
 
 agent_card = AgentCard(

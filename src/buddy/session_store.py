@@ -6,12 +6,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from buddy.data_dirs import buddy_data_dir
+
 from pydantic_ai import ModelMessagesTypeAdapter
 from pydantic_core import to_jsonable_python
 
 
 class SessionStore:
     def __init__(self, db_path: Path) -> None:
+        if not db_path.is_absolute():
+            db_path = buddy_data_dir() / db_path
         self._db_path = db_path
         self._ensure_parent()
         self._init_schema()

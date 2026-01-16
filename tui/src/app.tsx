@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import type { InputRenderable } from "@opentui/core";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { InputRenderable, SelectOption } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 
 import { ChatPanel, type ChatMessage } from "./components/chat-panel";
@@ -7,9 +7,12 @@ import { StatusPanel } from "./components/status-panel";
 import {
   buildUserMessage,
   createA2AClient,
+  fetchSession,
+  fetchSessions,
   getTextFromMessage,
   getTextFromParts,
   streamMessage,
+  type SessionSummary,
   type StreamEvent,
 } from "./lib/a2a-client";
 import { fetchAgentCard } from "./lib/server-status";
@@ -23,11 +26,14 @@ export const App = () => {
   const [statusText, setStatusText] = useState("Disconnected");
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputValue, setInputValue] = useState("");
+  const [, setInputValue] = useState("");
   const [inputKey, setInputKey] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [taskId, setTaskId] = useState<string | undefined>(undefined);
   const [contextId, setContextId] = useState<string | undefined>(undefined);
+  const [sessionList, setSessionList] = useState<SessionSummary[]>([]);
+  const [showSessionPicker, setShowSessionPicker] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   const clientRef = useRef<ReturnType<typeof createA2AClient> | null>(null);
   const inputRef = useRef<InputRenderable | null>(null);
@@ -36,6 +42,16 @@ export const App = () => {
   const finalOutputRenderedRef = useRef(false);
 
   useKeyboard((key) => {
+    if (showSessionPicker && key.name === "escape") {
+      setShowSessionPicker(false);
+      setTimeout(() => inputRef.current?.focus(), 0);
+      return;
+    }
+
+    if (showSessionPicker) {
+      return;
+    }
+
     if (key.ctrl && key.name === "w") {
       const input = inputRef.current;
       if (!input) {
@@ -76,6 +92,16 @@ export const App = () => {
     }
   };
 
+  const loadSessions = async () => {
+    try {
+      const sessions = await fetchSessions(serverUrl);
+      setSessionList(sessions);
+      setSessionError(null);
+    } catch (err) {
+      setSessionError(err instanceof Error ? err.message : "Failed to load sessions");
+    }
+  };
+
   useEffect(() => {
     void connectToServer();
 
@@ -83,6 +109,12 @@ export const App = () => {
       clientRef.current = null;
     };
   }, [serverUrl]);
+
+  useEffect(() => {
+    if (showSessionPicker) {
+      void loadSessions();
+    }
+  }, [showSessionPicker]);
 
   const appendMessage = (message: ChatMessage) => {
     setMessages((prev) => [...prev, message]);
@@ -235,6 +267,14 @@ export const App = () => {
       return;
     }
 
+    if (trimmed === "/sessions") {
+      setInputValue("");
+      setInputKey((prev) => prev + 1);
+      setSelectedSessionIndex(0);
+      setShowSessionPicker(true);
+      return;
+    }
+
     if (!client) {
       return;
     }
@@ -271,6 +311,34 @@ export const App = () => {
     }
   };
 
+  const sessionOptions = useMemo<SelectOption[]>(() => {
+    return sessionList.map((session) => ({
+      name: session.sessionId,
+      description: new Date(session.updatedAt).toLocaleString(),
+      value: session.sessionId,
+    }));
+  }, [sessionList]);
+
+  const [selectedSessionIndex, setSelectedSessionIndex] = useState(0);
+
+  const restoreSession = async (sessionId: string) => {
+    try {
+      const payload = await fetchSession(serverUrl, sessionId);
+      setContextId(payload.session.sessionId);
+      setTaskId(undefined);
+      setMessages(payload.messages);
+      setError(null);
+      payload.events.forEach(handleEvent);
+      setStatusText("Restored session");
+      streamingOutputRef.current = false;
+      finalOutputRenderedRef.current = false;
+      assistantMessageIdRef.current = null;
+      setSessionError(null);
+    } catch (err) {
+      setSessionError(err instanceof Error ? err.message : "Failed to restore session");
+    }
+  };
+
   return (
     <box style={{ flexDirection: "row", padding: 1, height: "100%", width: "100%" }}>
       <box style={{ width: 32, marginRight: 1 }}>
@@ -292,7 +360,44 @@ export const App = () => {
           onInput={setInputValue}
           onSend={handleSend}
           isSending={isSending}
+          commandHint="/sessions to restore a session"
+          inputFocused={!showSessionPicker}
         />
+        {showSessionPicker ? (
+          <box
+            style={{
+              position: "absolute",
+              left: 8,
+              top: 4,
+              width: 60,
+              height: 16,
+              border: true,
+              padding: 1,
+              backgroundColor: "#0f172a",
+            }}
+            title="Restore Session"
+          >
+            <text content="Select a session and press Enter" />
+            <select
+              key="session-picker"
+              focused
+              options={sessionOptions}
+              selectedIndex={selectedSessionIndex}
+              style={{ flexGrow: 1, marginTop: 1 }}
+              onSelect={(index, option) => {
+                setSelectedSessionIndex(index);
+                if (!option?.value) {
+                  return;
+                }
+                void restoreSession(String(option.value));
+                setShowSessionPicker(false);
+                setTimeout(() => inputRef.current?.focus(), 0);
+              }}
+            />
+            {sessionError ? <text content={`Error: ${sessionError}`} /> : null}
+            <text content="Enter to restore • Esc to close" />
+          </box>
+        ) : null}
       </box>
     </box>
   );

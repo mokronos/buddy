@@ -1,5 +1,4 @@
 import type { RefObject } from "react";
-import type { RefObject } from "react";
 import type { InputRenderable } from "@opentui/core";
 
 export type ChatMessage = {
@@ -16,6 +15,8 @@ type ChatPanelProps = {
   onInput: (value: string) => void;
   onSend: (value: string) => void;
   isSending: boolean;
+  commandHint?: string;
+  inputFocused?: boolean;
 };
 
 const roleLabel = (role: ChatMessage["role"]) => {
@@ -45,6 +46,8 @@ export const ChatPanel = ({
   onInput,
   onSend,
   isSending,
+  commandHint,
+  inputFocused = true,
 }: ChatPanelProps) => {
   return (
     <box style={{ border: true, flexDirection: "column", padding: 1, height: "100%" }} title="Chat">
@@ -68,12 +71,13 @@ export const ChatPanel = ({
           placeholder="Type a message and press Enter"
           onInput={onInput}
           onSubmit={onSend}
-          focused
+          focused={inputFocused}
         />
       </box>
       <box style={{ marginTop: 1 }}>
         <text content={isSending ? "Sending..." : "Enter to send • Ctrl+C to quit"} />
         <text content="/connect to retry server connection" />
+        {commandHint ? <text content={commandHint} /> : null}
       </box>
     </box>
   );

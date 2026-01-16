@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal, TypedDict
+
+from buddy.session_store import SessionStore
 
 
 class TodoItem(TypedDict):
@@ -10,13 +13,14 @@ class TodoItem(TypedDict):
     id: str
 
 
-_todos: list[TodoItem] = []
+_STORE = SessionStore(Path(".buddy") / "sessions.db")
+_SCOPE = "default"
 
 
 def get_todos() -> list[TodoItem]:
-    return list(_todos)
+    todos = _STORE.load_todos(_SCOPE)
+    return [todo for todo in todos if isinstance(todo, dict)]
 
 
 def set_todos(todos: list[TodoItem]) -> None:
-    global _todos
-    _todos = list(todos)
+    _STORE.save_todos(_SCOPE, [dict(todo) for todo in todos])

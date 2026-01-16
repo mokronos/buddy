@@ -90,6 +90,27 @@ class SessionStore:
             ).fetchall()
         return [json.loads(item[0]) for item in rows]
 
+    def load_todos(self, scope: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT todos_json FROM todo_lists WHERE scope = ?",
+                (scope,),
+            ).fetchone()
+        if row is None:
+            return []
+        todos = json.loads(row[0])
+        return todos if isinstance(todos, list) else []
+
+    def save_todos(self, scope: str, todos: list[dict[str, Any]]) -> None:
+        now = self._now()
+        payload = json.dumps(todos)
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO todo_lists(scope, todos_json, updated_at) VALUES(?, ?, ?)"
+                " ON CONFLICT(scope) DO UPDATE SET todos_json=excluded.todos_json, updated_at=excluded.updated_at",
+                (scope, payload, now),
+            )
+
     def next_event_index(self, session_id: str) -> int:
         with self._connect() as conn:
             row = conn.execute(
@@ -158,6 +179,14 @@ class SessionStore:
                 " content TEXT NOT NULL,"
                 " created_at TEXT NOT NULL,"
                 " FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE"
+                ")"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS todo_lists("
+                " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " scope TEXT NOT NULL UNIQUE,"
+                " todos_json TEXT NOT NULL,"
+                " updated_at TEXT NOT NULL"
                 ")"
             )
 

@@ -16,3 +16,8 @@
 - **Naming**: camelCase for variables/functions, PascalCase for classes/namespaces
 - **Error handling**: Use Result patterns
 - **File structure**: Namespace-based organization (e.g., `Tool.define()`, `Session.create()`)
+
+
+## OpenTUI
+
+- check ../opentui for the opentui library code and docs

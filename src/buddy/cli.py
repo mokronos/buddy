@@ -140,9 +140,23 @@ def server(
 ) -> None:
     import uvicorn
 
+    if reload:
+        uvicorn.run("buddy.main:app", host=host, port=port, reload=True)
+        return
+
     from buddy.main import app as buddy_app
 
-    uvicorn.run(buddy_app, host=host, port=port, reload=reload)
+    uvicorn.run(buddy_app, host=host, port=port)
+
+
+@app.command()
+def dev(
+    host: str = typer.Option("0.0.0.0", help="Host to bind the server."),
+    port: int = typer.Option(10001, help="Port to bind the server."),
+) -> None:
+    import uvicorn
+
+    uvicorn.run("buddy.main:app", host=host, port=port, reload=True)
 
 
 @app.command()

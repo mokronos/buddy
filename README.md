@@ -47,6 +47,12 @@ To run the server:
 uv run buddy server
 ```
 
+To run the server with hot reload:
+
+```
+uv run buddy dev
+```
+
 To connect with the CLI client:
 
 ```

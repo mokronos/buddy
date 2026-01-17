@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { InputRenderable } from "@opentui/core";
+import type { InputRenderable, SelectOption } from "@opentui/core";
 
 export type ChatMessage = {
   id: string;
@@ -14,9 +14,15 @@ type ChatPanelProps = {
   inputRef: RefObject<InputRenderable | null>;
   onInput: (value: string) => void;
   onSend: (value: string) => void;
+  onInputKeyDown?: (key: { name: string; ctrl?: boolean }) => void;
   isSending: boolean;
   commandHint?: string;
   inputFocused?: boolean;
+  showCommandPicker?: boolean;
+  commandOptions?: SelectOption[];
+  commandSelectedIndex?: number;
+  commandPickerKey?: string;
+  onSelectCommand?: (index: number, option: SelectOption | null) => void;
 };
 
 const roleLabel = (role: ChatMessage["role"]) => {
@@ -48,7 +54,22 @@ export const ChatPanel = ({
   isSending,
   commandHint,
   inputFocused = true,
+  showCommandPicker = false,
+  commandOptions = [],
+  commandSelectedIndex = 0,
+  commandPickerKey = "command-picker",
+  onSelectCommand,
+  onInputKeyDown,
 }: ChatPanelProps) => {
+  const commandPickerStyle = {
+    position: "absolute",
+    left: 2,
+    right: 2,
+    bottom: 6,
+             height: Math.min(12, Math.max(6, commandOptions.length + 5)),
+
+  };
+
   return (
     <box style={{ border: true, flexDirection: "column", padding: 1, height: "100%" }} title="Chat">
       <scrollbox style={{ flexGrow: 1 }} focused>
@@ -64,16 +85,42 @@ export const ChatPanel = ({
           ))
         )}
       </scrollbox>
-      <box style={{ marginTop: 1, height: 3 }}>
+       <box style={{ marginTop: 1, height: 3, zIndex: 2 }}>
+
         <input
           ref={inputRef}
           key={inputKey}
           placeholder="Type a message and press Enter"
           onInput={onInput}
           onSubmit={onSend}
+          onKeyDown={onInputKeyDown}
           focused={inputFocused}
         />
       </box>
+       {showCommandPicker ? (
+         <box
+           style={{
+             ...commandPickerStyle,
+             border: true,
+             padding: 1,
+             backgroundColor: "#0f172a",
+             zIndex: 1,
+           }}
+           title="Commands"
+         >
+           <select
+             key={commandPickerKey}
+             options={commandOptions}
+             selectedIndex={commandSelectedIndex}
+             showDescription={false}
+             itemSpacing={0}
+             style={{ flexGrow: 1 }}
+             onSelect={onSelectCommand}
+             keyBindings={[]}
+           />
+         </box>
+       ) : null}
+
       <box style={{ marginTop: 1 }}>
         <text
           content={[

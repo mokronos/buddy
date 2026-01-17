@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { InputRenderable, SelectOption } from "@opentui/core";
+import type { InputRenderable, SelectKeyBinding, SelectOption } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatPanel, type ChatMessage } from "./components/chat-panel";
 import { StatusPanel } from "./components/status-panel";
@@ -15,9 +15,24 @@ import {
   type SessionSummary,
   type StreamEvent,
 } from "./lib/a2a-client";
+import {
+  SLASH_COMMANDS,
+  filterSlashCommands,
+  shouldShowCommandPicker,
+  toCommandInput,
+  type SlashCommandWithHandler,
+} from "./lib/commands";
 import { fetchAgentCard } from "./lib/server-status";
 
 const DEFAULT_SERVER_URL = process.env.TUI_SERVER_URL ?? "http://localhost:10001/a2a";
+
+const SELECT_KEY_BINDINGS = [
+  { name: "up", action: "move-up" },
+  { name: "down", action: "move-down" },
+  { name: "n", ctrl: true, action: "move-down" },
+  { name: "p", ctrl: true, action: "move-up" },
+  { name: "enter", action: "select-current" },
+] satisfies SelectKeyBinding[];
 
 export const App = () => {
   const [serverUrl] = useState(DEFAULT_SERVER_URL);
@@ -27,14 +42,17 @@ export const App = () => {
   const [statusText, setStatusText] = useState("Disconnected");
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [, setInputValue] = useState("");
+  const [inputValue, setInputValue] = useState("");
   const [inputKey, setInputKey] = useState(0);
+  const [caretIndex, setCaretIndex] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [taskId, setTaskId] = useState<string | undefined>(undefined);
   const [contextId, setContextId] = useState<string | undefined>(undefined);
   const [sessionList, setSessionList] = useState<SessionSummary[]>([]);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [showCommandPicker, setShowCommandPicker] = useState(false);
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
 
   const clientRef = useRef<ReturnType<typeof createA2AClient> | null>(null);
   const inputRef = useRef<InputRenderable | null>(null);
@@ -42,7 +60,142 @@ export const App = () => {
   const streamingOutputRef = useRef(false);
   const finalOutputRenderedRef = useRef(false);
 
+  const connectToServer = useCallback(async () => {
+    const client = createA2AClient(serverUrl);
+    clientRef.current = client;
+    setStatusText("Connecting...");
+
+    try {
+      const card = await fetchAgentCard(client);
+      setAgentName(card.name ?? "Agent");
+      setConnected(true);
+      setError(null);
+      setStatusText("Connected");
+    } catch (err) {
+      setConnected(false);
+      setError(err instanceof Error ? err.message : "Failed to connect");
+      setStatusText("Disconnected");
+    }
+  }, [serverUrl]);
+
+  const commands = useMemo<SlashCommandWithHandler[]>(
+    () =>
+      SLASH_COMMANDS.map((command) => ({
+        ...command,
+        run: async () => {
+          if (command.name === "connect") {
+            setInputValue("");
+            setInputKey((prev) => prev + 1);
+            await connectToServer();
+            return;
+          }
+          if (command.name === "sessions") {
+            setInputValue("");
+            setInputKey((prev) => prev + 1);
+            setSelectedSessionIndex(0);
+            setShowSessionPicker(true);
+          }
+        },
+      })),
+    [connectToServer],
+  );
+
+  const filteredCommands = useMemo(() => {
+    return filterSlashCommands(SLASH_COMMANDS, inputValue).slice(0, 8);
+  }, [inputValue]);
+
+  const commandOptions = useMemo(() => {
+    return filteredCommands.map((command) => ({
+      name: `/${command.name}`,
+      description: command.description,
+      value: command.name,
+    }));
+  }, [filteredCommands]);
+
+  const commandPickerKey = useMemo(
+    () => `command-picker-${showCommandPicker}-${inputValue}-${commandOptions.length}-${selectedCommandIndex}`,
+    [showCommandPicker, inputValue, commandOptions.length, selectedCommandIndex],
+  );
+
+  const showCommandPickerResolved = showCommandPicker && commandOptions.length > 0;
+
+  useEffect(() => {
+    const shouldShow = shouldShowCommandPicker(inputValue) && !showSessionPicker;
+    setShowCommandPicker(shouldShow);
+    if (shouldShow) {
+      setSelectedCommandIndex(0);
+    }
+  }, [inputValue, showSessionPicker]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (input) {
+      setCaretIndex(input.cursorPosition ?? (input.value?.length ?? 0));
+    }
+  }, [inputValue]);
+
+  const handleCommandNavigation = useCallback(
+    (key: { name: string; ctrl?: boolean }) => {
+      if (!showCommandPickerResolved) {
+        return false;
+      }
+
+      if (key.ctrl && key.name === "n") {
+        setSelectedCommandIndex((prev) => Math.min(prev + 1, commandOptions.length - 1));
+        return true;
+      }
+      if (key.ctrl && key.name === "p") {
+        setSelectedCommandIndex((prev) => Math.max(prev - 1, 0));
+        return true;
+      }
+      if (key.name === "up") {
+        setSelectedCommandIndex((prev) => Math.max(prev - 1, 0));
+        return true;
+      }
+      if (key.name === "down") {
+        setSelectedCommandIndex((prev) => Math.min(prev + 1, commandOptions.length - 1));
+        return true;
+      }
+      if (key.name === "escape") {
+        setShowCommandPicker(false);
+        return true;
+      }
+      if (key.name === "enter") {
+        const selected = filteredCommands[selectedCommandIndex];
+        if (selected) {
+          const input = inputRef.current;
+          if (input) {
+            input.value = toCommandInput(selected);
+            input.cursorPosition = input.value.length;
+            setInputValue(input.value);
+          }
+        }
+        setShowCommandPicker(false);
+        return true;
+      }
+
+      return false;
+    },
+    [commandOptions.length, filteredCommands, selectedCommandIndex, showCommandPickerResolved],
+  );
+
+  const handleInputKeyDown = useCallback(
+    (key: { name: string; ctrl?: boolean }) => {
+      const input = inputRef.current;
+      if (input) {
+        setCaretIndex(input.cursorPosition ?? (input.value?.length ?? 0));
+      }
+      handleCommandNavigation(key);
+    },
+    [handleCommandNavigation],
+  );
+
   useKeyboard((key) => {
+    const input = inputRef.current;
+    if (input) {
+      setCaretIndex(input.cursorPosition ?? (input.value?.length ?? 0));
+    }
+
     if (showSessionPicker && key.name === "escape") {
       setShowSessionPicker(false);
       setTimeout(() => inputRef.current?.focus(), 0);
@@ -50,6 +203,10 @@ export const App = () => {
     }
 
     if (showSessionPicker) {
+      return;
+    }
+
+    if (handleCommandNavigation(key)) {
       return;
     }
 
@@ -75,24 +232,6 @@ export const App = () => {
     }
   });
 
-  const connectToServer = async () => {
-    const client = createA2AClient(serverUrl);
-    clientRef.current = client;
-    setStatusText("Connecting...");
-
-    try {
-      const card = await fetchAgentCard(client);
-      setAgentName(card.name ?? "Agent");
-      setConnected(true);
-      setError(null);
-      setStatusText("Connected");
-    } catch (err) {
-      setConnected(false);
-      setError(err instanceof Error ? err.message : "Failed to connect");
-      setStatusText("Disconnected");
-    }
-  };
-
   const loadSessions = async () => {
     try {
       const sessions = await fetchSessions(restBaseUrl);
@@ -109,7 +248,7 @@ export const App = () => {
     return () => {
       clientRef.current = null;
     };
-  }, [serverUrl]);
+  }, [serverUrl, connectToServer]);
 
   useEffect(() => {
     if (showSessionPicker) {
@@ -261,18 +400,24 @@ export const App = () => {
       return;
     }
 
-    if (trimmed === "/connect") {
-      setInputValue("");
-      setInputKey((prev) => prev + 1);
-      await connectToServer();
+    if (showCommandPickerResolved) {
+      const selected = filteredCommands[selectedCommandIndex];
+      if (selected) {
+        const input = inputRef.current;
+        if (input) {
+          input.value = toCommandInput(selected);
+          input.cursorPosition = input.value.length;
+          setInputValue(input.value);
+        }
+      }
+      setShowCommandPicker(false);
       return;
     }
 
-    if (trimmed === "/sessions") {
-      setInputValue("");
-      setInputKey((prev) => prev + 1);
-      setSelectedSessionIndex(0);
-      setShowSessionPicker(true);
+    const command = commands.find((item) => `/${item.name}` === trimmed);
+    if (command) {
+      setShowCommandPicker(false);
+      await command.run();
       return;
     }
 
@@ -358,11 +503,39 @@ export const App = () => {
           messages={messages}
           inputKey={inputKey}
           inputRef={inputRef}
-          onInput={setInputValue}
+          onInput={(value) => {
+            const input = inputRef.current;
+            if (input) {
+              setCaretIndex(input.cursorPosition ?? value.length);
+            }
+            setInputValue(value);
+          }}
           onSend={handleSend}
           isSending={isSending}
           commandHint="/sessions to restore a session"
           inputFocused={!showSessionPicker}
+          showCommandPicker={showCommandPickerResolved}
+          commandOptions={commandOptions}
+          commandSelectedIndex={selectedCommandIndex}
+          commandPickerKey={commandPickerKey}
+          onSelectCommand={(index, option) => {
+            setSelectedCommandIndex(index);
+            if (!option) {
+              return;
+            }
+            const selected = filteredCommands[index];
+            if (!selected) {
+              return;
+            }
+            const input = inputRef.current;
+            if (input) {
+              input.value = toCommandInput(selected);
+              input.cursorPosition = input.value.length;
+              setInputValue(input.value);
+            }
+            setShowCommandPicker(false);
+          }}
+          onInputKeyDown={handleInputKeyDown}
         />
         {showSessionPicker ? (
           <box
@@ -385,15 +558,16 @@ export const App = () => {
               options={sessionOptions}
               selectedIndex={selectedSessionIndex}
               style={{ flexGrow: 1, marginTop: 1 }}
-              onSelect={(index, option) => {
-                setSelectedSessionIndex(index);
-                if (!option?.value) {
-                  return;
-                }
-                void restoreSession(String(option.value));
-                setShowSessionPicker(false);
-                setTimeout(() => inputRef.current?.focus(), 0);
-              }}
+              keyBindings={SELECT_KEY_BINDINGS}
+             onSelect={(index, option) => {
+                 setSelectedSessionIndex(index);
+                 if (!option?.value) {
+                   return;
+                 }
+                 void restoreSession(String(option.value));
+                 setShowSessionPicker(false);
+               }}
+
             />
             {sessionError ? <text content={`Error: ${sessionError}`} /> : null}
             <text content="Enter to restore • Esc to close" />

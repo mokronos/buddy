@@ -1,5 +1,9 @@
 # buddy tui guidelines
 
+## General
+
+- Always quickly check if the TUI is even starting by running `bun run dev` before finishing your task
+
 ## Build/Test Commands
 
 - **Install**: `bun install`

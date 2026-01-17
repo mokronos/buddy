@@ -15,7 +15,7 @@
   "dependencies": {
     "@a2a-js/sdk": "^0.3.6",
     "@opentui/core": "^0.1.72",
-    "@opentui/react": "^0.1.72",
-    "react": "^19.2.3"
+    "@opentui/solid": "^0.1.72",
+    "solid-js": "^1.9.5"
   }
 }

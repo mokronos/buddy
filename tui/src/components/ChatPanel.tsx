@@ -1,17 +1,13 @@
-import type { RefObject } from "react";
-import type { InputRenderable, SelectOption } from "@opentui/core";
+import type { SelectOption } from "@opentui/core";
+import { For, Show } from "solid-js";
 
-export type ChatMessage = {
-  id: string;
-  role: "user" | "assistant" | "status";
-  content: string;
-  streaming?: boolean;
-};
+import type { ChatMessage } from "../contexts/ChatContext";
+import type { InputHandle } from "../app/useChatInput";
 
 type ChatPanelProps = {
-  messages: ChatMessage[];
+  messages: () => ChatMessage[];
   inputKey: number;
-  inputRef: RefObject<InputRenderable | null>;
+  setInputRef: (value: unknown) => void;
   onInput: (value: string) => void;
   onSend: (value: string) => void;
   onInputKeyDown?: (key: { name: string; ctrl?: boolean }) => void;
@@ -48,7 +44,7 @@ const roleColor = (role: ChatMessage["role"]) => {
 export const ChatPanel = ({
   messages,
   inputKey,
-  inputRef,
+  setInputRef,
   onInput,
   onSend,
   isSending,
@@ -66,29 +62,30 @@ export const ChatPanel = ({
     left: 2,
     right: 2,
     bottom: 6,
-             height: Math.min(12, Math.max(6, commandOptions.length + 5)),
-
+    height: Math.min(12, Math.max(6, commandOptions.length + 5)),
   };
 
   return (
     <box style={{ border: true, flexDirection: "column", padding: 1, height: "100%" }} title="Chat">
       <scrollbox style={{ flexGrow: 1 }} focused>
-        {messages.length === 0 ? (
-          <text content="No messages yet. Send one below." />
-        ) : (
-          messages.map((message) => (
-            <text
-              key={message.id}
-              content={`${roleLabel(message.role)}: ${message.content}${message.streaming ? "▌" : ""}`}
-              style={{ fg: roleColor(message.role) }}
-            />
-          ))
-        )}
+        <Show when={messages().length > 0} fallback={<text content="No messages yet. Send one below." />}>
+          <For each={messages()}>
+            {(message) => (
+              <text
+                content={`${roleLabel(message.role)}: ${message.content}${message.streaming ? "▌" : ""}`}
+                style={{ fg: roleColor(message.role) }}
+              />
+            )}
+          </For>
+        </Show>
       </scrollbox>
-       <box style={{ marginTop: 1, height: 3, zIndex: 2 }}>
-
+      <box style={{ marginTop: 1, height: 3, zIndex: 2 }}>
         <input
-          ref={inputRef}
+          ref={(node) => {
+            if (node) {
+              setInputRef(node as InputHandle);
+            }
+          }}
           key={inputKey}
           placeholder="Type a message and press Enter"
           onInput={onInput}
@@ -97,29 +94,29 @@ export const ChatPanel = ({
           focused={inputFocused}
         />
       </box>
-       {showCommandPicker ? (
-         <box
-           style={{
-             ...commandPickerStyle,
-             border: true,
-             padding: 1,
-             backgroundColor: "#0f172a",
-             zIndex: 1,
-           }}
-           title="Commands"
-         >
-           <select
-             key={commandPickerKey}
-             options={commandOptions}
-             selectedIndex={commandSelectedIndex}
-             showDescription={false}
-             itemSpacing={0}
-             style={{ flexGrow: 1 }}
-             onSelect={onSelectCommand}
-             keyBindings={[]}
-           />
-         </box>
-       ) : null}
+      <Show when={showCommandPicker}>
+        <box
+          style={{
+            ...commandPickerStyle,
+            border: true,
+            padding: 1,
+            backgroundColor: "#0f172a",
+            zIndex: 1,
+          }}
+          title="Commands"
+        >
+          <select
+            key={commandPickerKey}
+            options={commandOptions}
+            selectedIndex={commandSelectedIndex}
+            showDescription={false}
+            itemSpacing={0}
+            style={{ flexGrow: 1 }}
+            onSelect={onSelectCommand}
+            keyBindings={[]}
+          />
+        </box>
+      </Show>
 
       <box style={{ marginTop: 1 }}>
         <text

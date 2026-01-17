@@ -75,9 +75,15 @@ export const ChatPanel = ({
         />
       </box>
       <box style={{ marginTop: 1 }}>
-        <text content={isSending ? "Sending..." : "Enter to send • Ctrl+C to quit"} />
-        <text content="/connect to retry server connection" />
-        {commandHint ? <text content={commandHint} /> : null}
+        <text
+          content={[
+            isSending ? "Sending..." : "Enter to send • Ctrl+C to quit",
+            "/connect to retry server connection",
+            commandHint,
+          ]
+            .filter(Boolean)
+            .join("\n")}
+        />
       </box>
     </box>
   );

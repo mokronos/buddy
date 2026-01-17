@@ -1,17 +1,21 @@
 import os
+import os
+import subprocess
+import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
+from a2a.server.apps import A2AFastAPIApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
-from starlette.exceptions import HTTPException
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, TaskState
 from a2a.utils import new_agent_text_message, new_task
+from devtools import pprint
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic_ai import (
     Agent,
     AgentRunResultEvent,
@@ -27,13 +31,7 @@ from pydantic_ai import (
 from buddy.a2a.utils import simple_text_part
 from buddy.session_store import SessionStore
 
-from uuid import uuid4
-
 load_dotenv()
-
-from devtools import pprint
-import subprocess
-import tempfile
 
 
 def execute_ts_code(code: str):
@@ -70,6 +68,15 @@ def execute_ts_code(code: str):
 
 
 port = os.environ.get("PORT", 10001)
+public_url = os.environ.get("BUDDY_PUBLIC_URL")
+base_url = public_url.rstrip("/") if public_url else f"http://localhost:{port}"
+
+if base_url.endswith("/a2a"):
+    a2a_base_url = base_url
+    base_url = base_url[: -len("/a2a")].rstrip("/")
+else:
+    a2a_base_url = f"{base_url}/a2a"
+
 
 session_store = SessionStore(Path("sessions.db"))
 
@@ -77,7 +84,7 @@ session_store = SessionStore(Path("sessions.db"))
 agent_card = AgentCard(
     name="Test Agent",
     description="Test Agent",
-    url=f"http://localhost:{port}",
+    url=a2a_base_url,
     capabilities=AgentCapabilities(
         streaming=True,
     ),
@@ -354,7 +361,7 @@ class PyAIAgentExecutor(AgentExecutor):
         raise NotImplementedError("Cancellation is not supported yet")
 
 
-def create_app(agent: Agent):
+def create_app(agent: Agent) -> FastAPI:
     request_handler = DefaultRequestHandler(
         agent_executor=PyAIAgentExecutor(
             agent=agent,
@@ -362,20 +369,23 @@ def create_app(agent: Agent):
         task_store=InMemoryTaskStore(),
     )
 
-    a2a_app = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
+    a2a_app = A2AFastAPIApplication(agent_card=agent_card, http_handler=request_handler)
 
-    app = a2a_app.build()
+    app = a2a_app.build(
+        agent_card_url="/a2a/.well-known/agent-card.json",
+        rpc_url="/a2a",
+        extended_agent_card_url="/a2a/agent/authenticatedExtendedCard",
+    )
 
-    @app.route("/sessions", methods=["GET"])
+    @app.get("/sessions")
     async def list_sessions(request: Request) -> JSONResponse:
         limit_param = request.query_params.get("limit")
         limit = int(limit_param) if limit_param and limit_param.isdigit() else 20
         sessions = session_store.list_sessions(limit)
         return JSONResponse({"sessions": sessions})
 
-    @app.route("/sessions/{session_id}", methods=["GET"])
-    async def get_session(request: Request) -> JSONResponse:
-        session_id = request.path_params.get("session_id")
+    @app.get("/sessions/{session_id}")
+    async def get_session(session_id: str) -> JSONResponse:
         if not session_id:
             raise HTTPException(status_code=400, detail="Missing session id")
         session = session_store.get_session(session_id)

@@ -24,4 +24,4 @@ bun dev
 
 ## Configuration
 
-- `TUI_SERVER_URL` (default: `http://localhost:10001`)
+- `TUI_SERVER_URL` (default: `http://localhost:10001/a2a`)

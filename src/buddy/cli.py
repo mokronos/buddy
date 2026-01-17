@@ -147,7 +147,7 @@ def server(
 
 @app.command()
 def chat(
-    url: str = typer.Option("http://localhost:10001", help="A2A server base URL."),
+    url: str = typer.Option("http://localhost:10001/a2a", help="A2A server base URL."),
     session: Optional[str] = typer.Option(None, help="Session/context ID."),
 ) -> None:
     session_id = session or str(uuid.uuid4())

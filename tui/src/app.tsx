@@ -17,10 +17,11 @@ import {
 } from "./lib/a2a-client";
 import { fetchAgentCard } from "./lib/server-status";
 
-const DEFAULT_SERVER_URL = process.env.TUI_SERVER_URL ?? "http://localhost:10001";
+const DEFAULT_SERVER_URL = process.env.TUI_SERVER_URL ?? "http://localhost:10001/a2a";
 
 export const App = () => {
   const [serverUrl] = useState(DEFAULT_SERVER_URL);
+  const restBaseUrl = serverUrl.replace(/\/a2a\/?$/, "");
   const [agentName, setAgentName] = useState("Unknown Agent");
   const [connected, setConnected] = useState(false);
   const [statusText, setStatusText] = useState("Disconnected");
@@ -94,7 +95,7 @@ export const App = () => {
 
   const loadSessions = async () => {
     try {
-      const sessions = await fetchSessions(serverUrl);
+      const sessions = await fetchSessions(restBaseUrl);
       setSessionList(sessions);
       setSessionError(null);
     } catch (err) {
@@ -323,7 +324,7 @@ export const App = () => {
 
   const restoreSession = async (sessionId: string) => {
     try {
-      const payload = await fetchSession(serverUrl, sessionId);
+      const payload = await fetchSession(restBaseUrl, sessionId);
       setContextId(payload.session.sessionId);
       setTaskId(undefined);
       setMessages(payload.messages);

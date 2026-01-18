@@ -113,7 +113,6 @@ export const ChatPanel = ({
             itemSpacing={0}
             style={{ flexGrow: 1 }}
             onSelect={onSelectCommand}
-            keyBindings={[]}
           />
         </box>
       </Show>

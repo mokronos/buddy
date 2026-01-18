@@ -1,5 +1,5 @@
 import { useKeyboard } from "@opentui/solid";
-import { createEffect, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 
 import { ChatPanel } from "../components/ChatPanel";
 import { SessionPicker } from "../components/SessionPicker";
@@ -94,16 +94,22 @@ export const App = () => {
     setIsSending,
   } = useChatInput();
 
+  const [
+    showCommandPicker,
+    setShowCommandPicker,
+  ] = createSignal(false);
+
   const {
     filteredCommands,
     commandOptions,
     commandPickerKey,
-    showCommandPicker,
-    setShowCommandPicker,
     selectedCommandIndex,
     setSelectedCommandIndex,
-    showCommandPickerResolved,
   } = useCommandPicker(inputValue);
+
+  const showCommandPickerResolved = createMemo(
+    () => showCommandPicker() && commandOptions().length > 0,
+  );
 
   createEffect(() => {
     const shouldShow = shouldShowCommandPicker(inputValue()) && !showSessionPicker();

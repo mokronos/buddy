@@ -14,7 +14,6 @@ export type SlashCommandWithHandler = SlashCommand & {
 };
 
 export const useCommandPicker = (inputValue: () => string) => {
-  const [showCommandPicker, setShowCommandPicker] = createSignal(false);
   const [selectedCommandIndex, setSelectedCommandIndex] = createSignal(0);
 
   const filteredCommands = createMemo(() =>
@@ -31,22 +30,15 @@ export const useCommandPicker = (inputValue: () => string) => {
 
   const commandPickerKey = createMemo(
     () =>
-      `command-picker-${showCommandPicker()}-${inputValue()}-${commandOptions().length}-${selectedCommandIndex()}`,
-  );
-
-  const showCommandPickerResolved = createMemo(
-    () => showCommandPicker() && commandOptions().length > 0,
+      `command-picker-${inputValue()}-${commandOptions().length}-${selectedCommandIndex()}`,
   );
 
   return {
     filteredCommands,
     commandOptions,
     commandPickerKey,
-    showCommandPicker,
-    setShowCommandPicker,
     selectedCommandIndex,
     setSelectedCommandIndex,
-    showCommandPickerResolved,
   };
 };
 
@@ -55,7 +47,7 @@ export const handleCommandNavigation = (
   showCommandPickerResolved: () => boolean,
   commandOptions: () => SelectOption[],
   selectedCommandIndex: () => number,
-  setSelectedCommandIndex: (value: number) => void,
+  setSelectedCommandIndex: (value: number | ((prev: number) => number)) => void,
   setShowCommandPicker: (value: boolean) => void,
   filteredCommands: () => SlashCommand[],
 ) => {

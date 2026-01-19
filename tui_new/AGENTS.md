@@ -22,7 +22,6 @@
 - **File structure**: Namespace-based organization (e.g., `Tool.define()`, `Session.create()`)
 - **Components**: Use one component per file, with a single responsibility
 
-
 ## OpenTUI
 
 - check ../opentui for the opentui library code and docs

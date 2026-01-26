@@ -13,6 +13,9 @@ app.config.timestamp_*.js
 # dependencies
 /node_modules
 
+# Generated clients
+/src/buddy-client
+
 # IDEs and editors
 /.idea
 .project

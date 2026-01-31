@@ -58,3 +58,15 @@ To connect with the CLI client:
 ```
 uv run buddy chat
 ```
+
+# TypeScript Client SDK
+
+To generate the TypeScript client SDK from the OpenAPI spec:
+
+```
+bunx openapi-ts
+```
+
+This will generate the client in `app/src/buddy-client` based on the OpenAPI spec at `http://localhost:10001/openapi.json`.
+
+Make sure the server is running on port 10001 before generating the SDK.

@@ -28,6 +28,11 @@ dependencies = [
     "fastapi[standard]>=0.119.1",
     "devtools>=0.12.2",
     "pydantic-ai-slim[google]>=1.18.0",
+    "arize-phoenix-otel>=0.14.0",
+    "openinference-instrumentation-pydantic-ai>=0.1.11",
+    "opentelemetry-sdk>=1.39.1",
+    "opentelemetry-exporter-otlp>=1.39.1",
+    "opentelemetry-api>=1.39.1",
 ]
 
 [project.urls]

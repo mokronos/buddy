@@ -132,6 +132,16 @@ async def _chat_loop(url: str, session_id: str) -> None:
             await close()
 
 
+async def _send_one_off(url: str, session_id: str, text: str) -> None:
+    client: Any = await ClientFactory.connect(url, client_config=ClientConfig())
+    try:
+        await _stream_message(client, session_id, text)
+    finally:
+        close = getattr(client, "close", None)
+        if close:
+            await close()
+
+
 @app.command()
 def server(
     host: str = typer.Option("0.0.0.0", help="Host to bind the server."),
@@ -167,5 +177,18 @@ def chat(
     session_id = session or str(uuid.uuid4())
     try:
         asyncio.run(_chat_loop(url, session_id))
+    except KeyboardInterrupt:
+        typer.echo("")
+
+
+@app.command()
+def ask(
+    text: str = typer.Argument(..., help="One-off user message."),
+    url: str = typer.Option("http://localhost:10001/a2a", help="A2A server base URL."),
+    session: Optional[str] = typer.Option(None, help="Session/context ID."),
+) -> None:
+    session_id = session or str(uuid.uuid4())
+    try:
+        asyncio.run(_send_one_off(url, session_id, text))
     except KeyboardInterrupt:
         typer.echo("")

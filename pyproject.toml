@@ -33,6 +33,7 @@ dependencies = [
     "opentelemetry-sdk>=1.39.1",
     "opentelemetry-exporter-otlp>=1.39.1",
     "opentelemetry-api>=1.39.1",
+    "langfuse>=3.12.1",
 ]
 
 [project.urls]

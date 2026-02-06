@@ -1,34 +1,56 @@
-from phoenix.otel import register
-
-tracer_provider = register(
-    project_name="my-llm-app",
-    auto_instrument=False,
-    set_global_tracer_provider=False,
-)
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
 import os
+from typing import Any, cast
 
+from openai import AsyncOpenAI
 from pydantic_ai import Agent, InstrumentationSettings, RunContext
-from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.models.openai import OpenAIModelName, OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
-model = OpenAIResponsesModel("gpt-5.2", provider=OpenAIProvider(api_key=os.getenv("OPENAI_ACCESS_TOKEN"), base_url="https://chatgpt.com/backend-api/codex/responses"))
+from langfuse import get_client
+
+langfuse = get_client()
+
+# Verify connection
+if langfuse.auth_check():
+    print("Langfuse client is authenticated and ready!")
+else:
+    print("Authentication failed. Please check your credentials and host.")
+
+default_headers = {
+    "originator": "opencode",
+    "Openai-Intent": "conversation-edits",
+    "User-Agent": "opencode/0.0.0",
+}
+
+if account_id := os.getenv("ACCOUNT_ID"):
+    default_headers["ChatGPT-Account-Id"] = account_id
+
+openai_client = AsyncOpenAI(
+    api_key=os.getenv("OPENAI_ACCESS_TOKEN"),
+    base_url="https://chatgpt.com/backend-api/codex",
+    default_headers=default_headers,
+)
+
+model_name: OpenAIModelName = cast(OpenAIModelName, "gpt-5.2")
+model = OpenAIResponsesModel(model_name, provider=OpenAIProvider(openai_client=openai_client))
+
+model_settings: OpenAIResponsesModelSettings = {"openai_store": False}
 
 roulette_agent = Agent(
     # model="google-gla:gemini-2.5-flash",
     model=model,
     deps_type=int,
-    output_type=bool,
-    system_prompt=(
-        "Use the `roulette_wheel` function to see if the customer has won based on the number they provide."
-    ),
-    instrument=InstrumentationSettings(tracer_provider=tracer_provider),
+    # output_type=bool,
+    model_settings=cast(Any, model_settings),
+    instructions=("Use the `roulette_wheel` function to see if the customer has won based on the number they provide."),
 )
 
+roulette_agent.instrument_all()
 
 @roulette_agent.tool
 async def roulette_wheel(ctx: RunContext[int], square: int) -> str:
@@ -38,6 +60,6 @@ async def roulette_wheel(ctx: RunContext[int], square: int) -> str:
 
 # Run the agent
 success_number = 18
-result = roulette_agent.run_sync("Put my money on square eighteen", deps=success_number)
-print(result.output)
+result = roulette_agent.run_stream_sync("Put my money on square eighteen", deps=success_number)
+print(result.get_output())
 # > True

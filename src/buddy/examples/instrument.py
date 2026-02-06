@@ -1,4 +1,3 @@
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,7 +6,7 @@ import os
 from typing import Any, cast
 
 from openai import AsyncOpenAI
-from pydantic_ai import Agent, InstrumentationSettings, RunContext
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModelName, OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -52,6 +51,7 @@ roulette_agent = Agent(
 
 roulette_agent.instrument_all()
 
+
 @roulette_agent.tool
 async def roulette_wheel(ctx: RunContext[int], square: int) -> str:
     """check if the square is a winner"""
@@ -60,6 +60,5 @@ async def roulette_wheel(ctx: RunContext[int], square: int) -> str:
 
 # Run the agent
 success_number = 18
-result = roulette_agent.run_stream_sync("Put my money on square eighteen", deps=success_number)
-print(result.get_output())
-# > True
+result = roulette_agent.run_sync("Put my money on square eighteen", deps=success_number)
+print(result.output)

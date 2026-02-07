@@ -2,51 +2,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import os
 import asyncio
-from typing import Any, cast
 
-from openai import AsyncOpenAI
 from pydantic_ai import Agent, AgentRunResultEvent, AgentStreamEvent, RunContext
-from pydantic_ai.models.openai import OpenAIModelName, OpenAIResponsesModel, OpenAIResponsesModelSettings
-from pydantic_ai.providers.openai import OpenAIProvider
+
+from buddy.models import create_codex_model
 
 from langfuse import get_client
 
 langfuse = get_client()
 
 # Verify connection
-if langfuse.auth_check():
-    print("Langfuse client is authenticated and ready!")
-else:
-    print("Authentication failed. Please check your credentials and host.")
+try:
+    if langfuse.auth_check():
+        print("Langfuse client is authenticated and ready!")
+    else:
+        print("Authentication failed. Please check your credentials and host.")
+except Exception as e:
+    print(f"Langfuse connection error (skipping): {e}")
 
-default_headers = {
-    "originator": "opencode",
-    "Openai-Intent": "conversation-edits",
-    "User-Agent": "opencode/0.0.0",
-}
-
-if account_id := os.getenv("ACCOUNT_ID"):
-    default_headers["ChatGPT-Account-Id"] = account_id
-
-openai_client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_ACCESS_TOKEN"),
-    base_url="https://chatgpt.com/backend-api/codex",
-    default_headers=default_headers,
-)
-
-model_name: OpenAIModelName = cast(OpenAIModelName, "gpt-5.2")
-model = OpenAIResponsesModel(model_name, provider=OpenAIProvider(openai_client=openai_client))
-
-model_settings: OpenAIResponsesModelSettings = {"openai_store": False}
+model = create_codex_model(model_name="gpt-5.2")
 
 roulette_agent = Agent(
-    # model="google-gla:gemini-2.5-flash",
     model=model,
     deps_type=int,
-    # output_type=bool,
-    model_settings=cast(Any, model_settings),
     instructions=("Use the `roulette_wheel` function to see if the customer has won based on the number they provide."),
 )
 

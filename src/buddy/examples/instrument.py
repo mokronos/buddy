@@ -3,10 +3,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import asyncio
 from typing import Any, cast
 
 from openai import AsyncOpenAI
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, AgentRunResultEvent, AgentStreamEvent, RunContext
 from pydantic_ai.models.openai import OpenAIModelName, OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -58,7 +59,19 @@ async def roulette_wheel(ctx: RunContext[int], square: int) -> str:
     return "winner" if square == ctx.deps else "loser"
 
 
-# Run the agent
-success_number = 18
-result = roulette_agent.run_sync("Put my money on square eighteen", deps=success_number)
-print(result.output)
+async def main() -> None:
+    success_number = 18
+    events: list[AgentStreamEvent | AgentRunResultEvent[str]] = []
+
+    async for event in roulette_agent.run_stream_events("Put my money on square eighteen", deps=success_number):
+        events.append(event)
+
+    for event in events:
+        print(event)
+
+    if events and isinstance(events[-1], AgentRunResultEvent):
+        print(events[-1].result.output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

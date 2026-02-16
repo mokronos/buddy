@@ -1,7 +1,7 @@
-from buddy.tools.todo_store import TodoItem, TodoPatch, update_todo
+from buddy.tools.todo_store import TodoPatch, TodoUpdateResult, update_todo
 
 
-def todoupdate(id: str, patch: TodoPatch) -> list[TodoItem]:
+def todoupdate(id: str, patch: TodoPatch) -> TodoUpdateResult:
     """Update fields of an existing todo by id.
 
     Args:
@@ -9,6 +9,6 @@ def todoupdate(id: str, patch: TodoPatch) -> list[TodoItem]:
         patch: Partial update for content, status, and/or priority.
 
     Returns:
-        The updated todo list.
+        The updated item diff and latest todo list.
     """
     return update_todo(id, patch)

@@ -76,100 +76,192 @@ class PyAIAgentExecutor(AgentExecutor):
         res = None
         cur_artifact_id = None
         tool_calls: dict[str, dict[str, object | None]] = {}
-        async for event in self.agent.run_stream_events(query, message_history=msg_history):
-            pprint(event)
+        try:
+            async for event in self.agent.run_stream_events(query, message_history=msg_history):
+                pprint(event)
 
-            if isinstance(event, PartStartEvent):
-                part = event.part
-                cur_artifact_id = str(uuid4())
-                if isinstance(part, TextPart):
-                    await updater.add_artifact(
-                        [simple_text_part(part.content)],
-                        name="output_start",
-                        artifact_id=cur_artifact_id,
-                    )
-                    self.session_store.append_event(
-                        context_id,
-                        event_index,
-                        {
-                            "kind": "artifact-update",
-                            "contextId": context_id,
-                            "taskId": task.id,
-                            "artifact": {
-                                "artifactId": cur_artifact_id,
-                                "name": "output_start",
-                                "parts": [{"kind": "text", "text": part.content}],
+                if isinstance(event, PartStartEvent):
+                    part = event.part
+                    cur_artifact_id = str(uuid4())
+                    if isinstance(part, TextPart):
+                        await updater.add_artifact(
+                            [simple_text_part(part.content)],
+                            name="output_start",
+                            artifact_id=cur_artifact_id,
+                        )
+                        self.session_store.append_event(
+                            context_id,
+                            event_index,
+                            {
+                                "kind": "artifact-update",
+                                "contextId": context_id,
+                                "taskId": task.id,
+                                "artifact": {
+                                    "artifactId": cur_artifact_id,
+                                    "name": "output_start",
+                                    "parts": [{"kind": "text", "text": part.content}],
+                                },
                             },
-                        },
-                    )
-                    event_index += 1
-            if isinstance(event, PartDeltaEvent):
-                delta = event.delta
+                        )
+                        event_index += 1
+                if isinstance(event, PartDeltaEvent):
+                    delta = event.delta
 
-                if isinstance(delta, TextPartDelta):
-                    await updater.add_artifact(
-                        [simple_text_part(delta.content_delta)],
-                        name="output_delta",
-                        append=True,
-                        artifact_id=cur_artifact_id,
-                    )
-                    self.session_store.append_event(
-                        context_id,
-                        event_index,
-                        {
-                            "kind": "artifact-update",
-                            "contextId": context_id,
-                            "taskId": task.id,
-                            "append": True,
-                            "artifact": {
-                                "artifactId": cur_artifact_id,
-                                "name": "output_delta",
-                                "parts": [{"kind": "text", "text": delta.content_delta}],
+                    if isinstance(delta, TextPartDelta):
+                        await updater.add_artifact(
+                            [simple_text_part(delta.content_delta)],
+                            name="output_delta",
+                            append=True,
+                            artifact_id=cur_artifact_id,
+                        )
+                        self.session_store.append_event(
+                            context_id,
+                            event_index,
+                            {
+                                "kind": "artifact-update",
+                                "contextId": context_id,
+                                "taskId": task.id,
+                                "append": True,
+                                "artifact": {
+                                    "artifactId": cur_artifact_id,
+                                    "name": "output_delta",
+                                    "parts": [{"kind": "text", "text": delta.content_delta}],
+                                },
                             },
-                        },
-                    )
-                    event_index += 1
+                        )
+                        event_index += 1
 
-            if isinstance(event, PartEndEvent):
-                part = event.part
-                if isinstance(part, TextPart):
-                    await updater.add_artifact(
-                        [simple_text_part(part.content)],
-                        name="output_end",
-                        artifact_id=cur_artifact_id,
-                    )
-                    self.session_store.append_event(
-                        context_id,
-                        event_index,
-                        {
-                            "kind": "artifact-update",
-                            "contextId": context_id,
-                            "taskId": task.id,
-                            "artifact": {
-                                "artifactId": cur_artifact_id,
-                                "name": "output_end",
-                                "parts": [{"kind": "text", "text": part.content}],
+                if isinstance(event, PartEndEvent):
+                    part = event.part
+                    if isinstance(part, TextPart):
+                        await updater.add_artifact(
+                            [simple_text_part(part.content)],
+                            name="output_end",
+                            artifact_id=cur_artifact_id,
+                        )
+                        self.session_store.append_event(
+                            context_id,
+                            event_index,
+                            {
+                                "kind": "artifact-update",
+                                "contextId": context_id,
+                                "taskId": task.id,
+                                "artifact": {
+                                    "artifactId": cur_artifact_id,
+                                    "name": "output_end",
+                                    "parts": [{"kind": "text", "text": part.content}],
+                                },
                             },
-                        },
-                    )
-                    event_index += 1
-                if isinstance(part, ToolCallPart):
-                    tool_call_id = part.tool_call_id
-                    tool_calls[tool_call_id] = {
-                        "args": part.args,
+                        )
+                        event_index += 1
+                    if isinstance(part, ToolCallPart):
+                        tool_call_id = part.tool_call_id
+                        tool_calls[tool_call_id] = {
+                            "args": part.args,
+                        }
+                        tool_call_artifact_id = str(uuid4())
+
+                        await updater.add_artifact(
+                            [
+                                simple_data_part({
+                                    "toolName": part.tool_name,
+                                    "toolCallId": tool_call_id,
+                                    "args": part.args,
+                                })
+                            ],
+                            name="tool_call",
+                            artifact_id=tool_call_artifact_id,
+                        )
+                        self.session_store.append_event(
+                            context_id,
+                            event_index,
+                            {
+                                "kind": "artifact-update",
+                                "contextId": context_id,
+                                "taskId": task.id,
+                                "artifact": {
+                                    "artifactId": tool_call_artifact_id,
+                                    "name": "tool_call",
+                                    "parts": [
+                                        {
+                                            "kind": "data",
+                                            "data": {
+                                                "toolName": part.tool_name,
+                                                "toolCallId": tool_call_id,
+                                                "args": part.args,
+                                            },
+                                        }
+                                    ],
+                                },
+                            },
+                        )
+                        event_index += 1
+
+                        await updater.update_status(
+                            TaskState.working,
+                            message=new_agent_text_message(f"Calling tool: {part.tool_name} with args: {part.args}"),
+                        )
+                        self.session_store.append_event(
+                            context_id,
+                            event_index,
+                            {
+                                "kind": "status-update",
+                                "contextId": context_id,
+                                "taskId": task.id,
+                                "final": False,
+                                "status": {
+                                    "state": TaskState.working.value,
+                                    "message": {
+                                        "kind": "message",
+                                        "messageId": str(uuid4()),
+                                        "role": "agent",
+                                        "parts": [
+                                            {
+                                                "kind": "text",
+                                                "text": f"Calling tool: {part.tool_name} with args: {part.args}",
+                                            }
+                                        ],
+                                    },
+                                },
+                            },
+                        )
+                        event_index += 1
+
+                if isinstance(event, FunctionToolResultEvent):
+                    res = event.result
+
+                    if isinstance(res, ToolReturnPart):
+                        tool_name = res.tool_name
+                        tool_call_id = res.tool_call_id
+                        result_content: object = res.content
+                        ok = True
+                    elif isinstance(res, RetryPromptPart):
+                        tool_name = res.tool_name if res.tool_name else "unknown_tool"
+                        tool_call_id = res.tool_call_id
+                        result_content = res.content
+                        ok = False
+                    else:
+                        tool_name = "unknown_tool"
+                        tool_call_id = "unknown_tool_call"
+                        result_content = "unknown_result"
+                        ok = False
+
+                    tool_call = tool_calls.get(tool_call_id)
+                    tool_args = tool_call["args"] if tool_call and "args" in tool_call else None
+                    tool_result_artifact_id = str(uuid4())
+
+                    tool_result_data = {
+                        "toolName": tool_name,
+                        "toolCallId": tool_call_id,
+                        "args": tool_args,
+                        "result": result_content,
+                        "ok": ok,
                     }
-                    tool_call_artifact_id = str(uuid4())
 
                     await updater.add_artifact(
-                        [
-                            simple_data_part({
-                                "toolName": part.tool_name,
-                                "toolCallId": tool_call_id,
-                                "args": part.args,
-                            })
-                        ],
-                        name="tool_call",
-                        artifact_id=tool_call_artifact_id,
+                        [simple_data_part(tool_result_data)],
+                        name="tool_result",
+                        artifact_id=tool_result_artifact_id,
                     )
                     self.session_store.append_event(
                         context_id,
@@ -179,27 +271,19 @@ class PyAIAgentExecutor(AgentExecutor):
                             "contextId": context_id,
                             "taskId": task.id,
                             "artifact": {
-                                "artifactId": tool_call_artifact_id,
-                                "name": "tool_call",
+                                "artifactId": tool_result_artifact_id,
+                                "name": "tool_result",
                                 "parts": [
                                     {
                                         "kind": "data",
-                                        "data": {
-                                            "toolName": part.tool_name,
-                                            "toolCallId": tool_call_id,
-                                            "args": part.args,
-                                        },
+                                        "data": tool_result_data,
                                     }
                                 ],
                             },
                         },
                     )
                     event_index += 1
-
-                    await updater.update_status(
-                        TaskState.working,
-                        message=new_agent_text_message(f"Calling tool: {part.tool_name} with args: {part.args}"),
-                    )
+                    await updater.update_status(TaskState.working, message=new_agent_text_message("Agent thinking ..."))
                     self.session_store.append_event(
                         context_id,
                         event_index,
@@ -214,98 +298,67 @@ class PyAIAgentExecutor(AgentExecutor):
                                     "kind": "message",
                                     "messageId": str(uuid4()),
                                     "role": "agent",
-                                    "parts": [
-                                        {
-                                            "kind": "text",
-                                            "text": f"Calling tool: {part.tool_name} with args: {part.args}",
-                                        }
-                                    ],
+                                    "parts": [{"kind": "text", "text": "Agent thinking ..."}],
                                 },
                             },
                         },
                     )
                     event_index += 1
 
-            if isinstance(event, FunctionToolResultEvent):
-                res = event.result
+                if isinstance(event, AgentRunResultEvent):
+                    res = event.result
+        except Exception as error:
+            error_text = str(error)
+            error_artifact_id = str(uuid4())
+            error_data = {
+                "toolName": "agent",
+                "toolCallId": "execution_error",
+                "args": {"query": query},
+                "result": error_text,
+                "ok": False,
+            }
+            await updater.add_artifact(
+                [simple_data_part(error_data)],
+                name="tool_result",
+                artifact_id=error_artifact_id,
+            )
+            self.session_store.append_event(
+                context_id,
+                event_index,
+                {
+                    "kind": "artifact-update",
+                    "contextId": context_id,
+                    "taskId": task.id,
+                    "artifact": {
+                        "artifactId": error_artifact_id,
+                        "name": "tool_result",
+                        "parts": [{"kind": "data", "data": error_data}],
+                    },
+                },
+            )
+            event_index += 1
 
-                if isinstance(res, ToolReturnPart):
-                    tool_name = res.tool_name
-                    tool_call_id = res.tool_call_id
-                    result_content: object = res.content
-                    ok = True
-                elif isinstance(res, RetryPromptPart):
-                    tool_name = res.tool_name if res.tool_name else "unknown_tool"
-                    tool_call_id = res.tool_call_id
-                    result_content = res.content
-                    ok = False
-                else:
-                    tool_name = "unknown_tool"
-                    tool_call_id = "unknown_tool_call"
-                    result_content = "unknown_result"
-                    ok = False
-
-                tool_call = tool_calls.get(tool_call_id)
-                tool_args = tool_call["args"] if tool_call and "args" in tool_call else None
-                tool_result_artifact_id = str(uuid4())
-
-                tool_result_data = {
-                    "toolName": tool_name,
-                    "toolCallId": tool_call_id,
-                    "args": tool_args,
-                    "result": result_content,
-                    "ok": ok,
-                }
-
-                await updater.add_artifact(
-                    [simple_data_part(tool_result_data)],
-                    name="tool_result",
-                    artifact_id=tool_result_artifact_id,
-                )
-                self.session_store.append_event(
-                    context_id,
-                    event_index,
-                    {
-                        "kind": "artifact-update",
-                        "contextId": context_id,
-                        "taskId": task.id,
-                        "artifact": {
-                            "artifactId": tool_result_artifact_id,
-                            "name": "tool_result",
-                            "parts": [
-                                {
-                                    "kind": "data",
-                                    "data": tool_result_data,
-                                }
-                            ],
+            await updater.failed(new_agent_text_message(error_text))
+            self.session_store.append_event(
+                context_id,
+                event_index,
+                {
+                    "kind": "status-update",
+                    "contextId": context_id,
+                    "taskId": task.id,
+                    "final": True,
+                    "status": {
+                        "state": TaskState.failed.value,
+                        "message": {
+                            "kind": "message",
+                            "messageId": str(uuid4()),
+                            "role": "agent",
+                            "parts": [{"kind": "text", "text": error_text}],
                         },
                     },
-                )
-                event_index += 1
-                await updater.update_status(TaskState.working, message=new_agent_text_message("Agent thinking ..."))
-                self.session_store.append_event(
-                    context_id,
-                    event_index,
-                    {
-                        "kind": "status-update",
-                        "contextId": context_id,
-                        "taskId": task.id,
-                        "final": False,
-                        "status": {
-                            "state": TaskState.working.value,
-                            "message": {
-                                "kind": "message",
-                                "messageId": str(uuid4()),
-                                "role": "agent",
-                                "parts": [{"kind": "text", "text": "Agent thinking ..."}],
-                            },
-                        },
-                    },
-                )
-                event_index += 1
-
-            if isinstance(event, AgentRunResultEvent):
-                res = event.result
+                },
+            )
+            return
 
         if res is None:
             raise ValueError("Agent produced no result")

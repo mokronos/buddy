@@ -31,7 +31,10 @@ todo_tools = FunctionToolset(
 )
 
 agent = Agent(
-    model="google-gla:gemini-2.5-flash",
+    model="openrouter:openrouter/free",
+    # model="google-gla:gemini-2.5-flash",
+    # model="google-gla:gemini-2.5-pro",
+    # model="google-gla:gemini-2.5-flash-lite",
     toolsets=[web_tools, todo_tools],
     instrument=True,
 )

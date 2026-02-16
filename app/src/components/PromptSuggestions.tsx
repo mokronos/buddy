@@ -5,6 +5,11 @@ interface PromptSuggestionsProps {
 const QUICK_PROMPTS = [
   "add some random items to your todo list",
   "show me my todo list",
+  "add 3 todos with ids todo-1, todo-2, todo-3",
+  "update todo-2 status to completed and priority to high",
+  "rename todo-1 to 'Buy groceries and snacks'",
+  "delete todo-3 from my todo list",
+  "replace my todo list with two fresh tasks",
   "find the latest AI news and summarize it",
   "fetch https://example.com and give me a short summary",
 ];

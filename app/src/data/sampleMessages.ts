@@ -16,57 +16,132 @@ export const sampleMessages: Message[] = [
   {
     id: '1',
     type: 'human',
-    content: 'Hello! Can you help me understand how flexbox works in CSS?',
-    timestamp: '10:30 AM'
+    content: 'Add a few random tasks to my todo list for today.',
+    timestamp: '09:10 AM'
   },
   {
     id: '2',
-    type: 'ai',
-    content: 'Of course! Flexbox is a CSS layout module that makes it easy to create flexible and responsive layouts. Let me explain the key concepts:\n\n1. **Display: flex** - Turns an element into a flex container\n2. **flex-direction** - Controls the direction (row, column, etc.)\n3. **justify-content** - Aligns items along the main axis\n4. **align-items** - Aligns items along the cross axis\n\nWould you like me to show you a practical example?',
-    timestamp: '10:31 AM'
+    type: 'tool-call',
+    toolName: 'todoadd',
+    toolStatus: 'success',
+    toolCallId: 'call_todoadd_1',
+    toolCallArgs: {
+      todos: [
+        { id: 'todo-1', content: 'Buy groceries', status: 'pending', priority: 'high' },
+        { id: 'todo-2', content: 'Book dentist appointment', status: 'pending', priority: 'medium' },
+        { id: 'todo-3', content: 'Go for a 30 minute run', status: 'in_progress', priority: 'low' }
+      ]
+    },
+    toolResultData: [
+      { id: 'todo-1', content: 'Buy groceries', status: 'pending', priority: 'high' },
+      { id: 'todo-2', content: 'Book dentist appointment', status: 'pending', priority: 'medium' },
+      { id: 'todo-3', content: 'Go for a 30 minute run', status: 'in_progress', priority: 'low' }
+    ],
+    content: 'Added 3 todos.',
+    timestamp: '09:10 AM'
   },
   {
     id: '3',
-    type: 'tool',
-    toolName: 'Code Search',
-    content: 'Searching for flexbox examples in the codebase...',
-    toolStatus: 'running',
-    timestamp: '10:31 AM'
+    type: 'ai',
+    content: 'Done. I added 3 items to your list and marked your run as already in progress.',
+    timestamp: '09:10 AM'
   },
   {
     id: '4',
-    type: 'tool',
-    toolName: 'Code Search',
-    content: 'Found 15 flexbox examples across 8 files. Key patterns include:\n- .flex for container\n- .items-center for vertical centering\n- .justify-between for space distribution\n- .flex-col for column layouts',
-    toolStatus: 'success',
-    timestamp: '10:32 AM'
+    type: 'human',
+    content: 'Mark groceries as completed and raise the dentist one to high priority.',
+    timestamp: '09:12 AM'
   },
   {
     id: '5',
-    type: 'human',
-    content: 'That\'s helpful! Can you show me how to create a sidebar layout with flexbox?',
-    timestamp: '10:33 AM'
+    type: 'tool-call',
+    toolName: 'todoupdate',
+    toolStatus: 'success',
+    toolCallId: 'call_todoupdate_1',
+    toolCallArgs: {
+      id: 'todo-1',
+      patch: { status: 'completed' }
+    },
+    toolResultData: {
+      before: { id: 'todo-1', content: 'Buy groceries', status: 'pending', priority: 'high' },
+      after: { id: 'todo-1', content: 'Buy groceries', status: 'completed', priority: 'high' },
+      todos: [
+        { id: 'todo-1', content: 'Buy groceries', status: 'completed', priority: 'high' },
+        { id: 'todo-2', content: 'Book dentist appointment', status: 'pending', priority: 'medium' },
+        { id: 'todo-3', content: 'Go for a 30 minute run', status: 'in_progress', priority: 'low' }
+      ]
+    },
+    content: 'Updated todo-1.',
+    timestamp: '09:12 AM'
   },
   {
     id: '6',
-    type: 'ai',
-    content: 'Absolutely! Here\'s how you can create a sidebar layout using flexbox:\n\n```css\n.container {\n  display: flex;\n  height: 100vh;\n}\n\n.sidebar {\n  width: 250px;\n  background: #f5f5f5;\n}\n\n.main-content {\n  flex: 1;\n  padding: 20px;\n}\n```\n\nThe key is using `flex: 1` on the main content area to make it take up the remaining space after the fixed-width sidebar.',
-    timestamp: '10:34 AM'
+    type: 'tool-call',
+    toolName: 'todoupdate',
+    toolStatus: 'success',
+    toolCallId: 'call_todoupdate_2',
+    toolCallArgs: {
+      id: 'todo-2',
+      patch: { priority: 'high' }
+    },
+    toolResultData: {
+      before: { id: 'todo-2', content: 'Book dentist appointment', status: 'pending', priority: 'medium' },
+      after: { id: 'todo-2', content: 'Book dentist appointment', status: 'pending', priority: 'high' },
+      todos: [
+        { id: 'todo-1', content: 'Buy groceries', status: 'completed', priority: 'high' },
+        { id: 'todo-2', content: 'Book dentist appointment', status: 'pending', priority: 'high' },
+        { id: 'todo-3', content: 'Go for a 30 minute run', status: 'in_progress', priority: 'low' }
+      ]
+    },
+    content: 'Updated todo-2.',
+    timestamp: '09:12 AM'
   },
   {
     id: '7',
-    type: 'tool',
-    toolName: 'File Editor',
-    content: 'Creating example sidebar layout component...',
-    toolStatus: 'running',
-    timestamp: '10:34 AM'
+    type: 'ai',
+    content: 'Both updates are done. Want me to show the latest todo list?',
+    timestamp: '09:12 AM'
   },
   {
     id: '8',
-    type: 'tool',
-    toolName: 'File Editor',
-    content: 'Successfully created SidebarLayout.tsx with flexbox implementation.',
+    type: 'human',
+    content: 'Yes, and remove the running task.',
+    timestamp: '09:13 AM'
+  },
+  {
+    id: '9',
+    type: 'tool-call',
+    toolName: 'tododelete',
     toolStatus: 'success',
-    timestamp: '10:35 AM'
+    toolCallId: 'call_tododelete_1',
+    toolCallArgs: {
+      ids: ['todo-3']
+    },
+    toolResultData: [
+      { id: 'todo-1', content: 'Buy groceries', status: 'completed', priority: 'high' },
+      { id: 'todo-2', content: 'Book dentist appointment', status: 'pending', priority: 'high' }
+    ],
+    content: 'Deleted todo-3.',
+    timestamp: '09:13 AM'
+  },
+  {
+    id: '10',
+    type: 'tool-call',
+    toolName: 'todoread',
+    toolStatus: 'success',
+    toolCallId: 'call_todoread_1',
+    toolCallArgs: {},
+    toolResultData: [
+      { id: 'todo-1', content: 'Buy groceries', status: 'completed', priority: 'high' },
+      { id: 'todo-2', content: 'Book dentist appointment', status: 'pending', priority: 'high' }
+    ],
+    content: 'Read current todo list.',
+    timestamp: '09:13 AM'
+  },
+  {
+    id: '11',
+    type: 'ai',
+    content: 'Here is your current list: groceries is completed, and the dentist appointment is pending with high priority.',
+    timestamp: '09:13 AM'
   }
 ];

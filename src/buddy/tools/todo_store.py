@@ -17,6 +17,12 @@ class TodoPatch(TypedDict, total=False):
     priority: Literal["low", "medium", "high"]
 
 
+class TodoUpdateResult(TypedDict):
+    before: TodoItem
+    after: TodoItem
+    todos: list[TodoItem]
+
+
 _STORE = SessionStore(Path("sessions.db"))
 _SCOPE = "default"
 _ALLOWED_STATUS = {"pending", "in_progress", "completed", "cancelled"}
@@ -100,23 +106,44 @@ def add_todos(todos: list[TodoItem]) -> list[TodoItem]:
     for index, item in enumerate(todos):
         validate_todo_item(item, index)
 
-    current_ids = {item["id"] for item in current}
-    conflicts = sorted({item["id"] for item in todos if item["id"] in current_ids})
-    if conflicts:
-        msg = f"Todo id(s) already exist: {', '.join(conflicts)}"
-        raise ValueError(msg)
+    used_ids = {item["id"] for item in current}
+    normalized_new_todos: list[TodoItem] = []
+    for item in todos:
+        normalized_id = _next_available_id(item["id"], used_ids)
+        normalized_item: TodoItem = {
+            "id": normalized_id,
+            "content": item["content"],
+            "status": item["status"],
+            "priority": item["priority"],
+        }
+        used_ids.add(normalized_id)
+        normalized_new_todos.append(normalized_item)
 
-    updated = [*current, *todos]
+    updated = [*current, *normalized_new_todos]
     validate_unique_ids(updated)
     set_todos(updated)
     return updated
 
 
-def update_todo(todo_id: str, patch: TodoPatch) -> list[TodoItem]:
+def _next_available_id(base_id: str, used_ids: set[str]) -> str:
+    if base_id not in used_ids:
+        return base_id
+
+    index = 2
+    while True:
+        candidate = f"{base_id}-{index}"
+        if candidate not in used_ids:
+            return candidate
+        index += 1
+
+
+def update_todo(todo_id: str, patch: TodoPatch) -> TodoUpdateResult:
     validate_todo_patch(patch)
 
     current = get_todos()
     updated: list[TodoItem] = []
+    before_item: TodoItem | None = None
+    after_item: TodoItem | None = None
     found = False
 
     for item in current:
@@ -125,6 +152,12 @@ def update_todo(todo_id: str, patch: TodoPatch) -> list[TodoItem]:
             continue
 
         found = True
+        before_item = {
+            "id": item["id"],
+            "content": item["content"],
+            "status": item["status"],
+            "priority": item["priority"],
+        }
         next_item: TodoItem = {
             "id": item["id"],
             "content": patch.get("content", item["content"]),
@@ -132,6 +165,7 @@ def update_todo(todo_id: str, patch: TodoPatch) -> list[TodoItem]:
             "priority": patch.get("priority", item["priority"]),
         }
         validate_todo_item(next_item, 0)
+        after_item = next_item
         updated.append(next_item)
 
     if not found:
@@ -139,7 +173,15 @@ def update_todo(todo_id: str, patch: TodoPatch) -> list[TodoItem]:
         raise ValueError(msg)
 
     set_todos(updated)
-    return updated
+    if before_item is None or after_item is None:
+        msg = f"Todo with id '{todo_id}' not found"
+        raise ValueError(msg)
+
+    return {
+        "before": before_item,
+        "after": after_item,
+        "todos": updated,
+    }
 
 
 def delete_todos(ids: list[str]) -> list[TodoItem]:

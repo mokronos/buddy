@@ -11,6 +11,11 @@ interface TodoItemView {
   priority: string;
 }
 
+interface TodoUpdateDiff {
+  before: TodoItemView;
+  after: TodoItemView;
+}
+
 function readTodoItem(value: unknown): TodoItemView | null {
   const record = asRecord(value);
   if (!record) {
@@ -56,6 +61,39 @@ function readTodos(value: unknown): TodoItemView[] {
   return todos.map(readTodoItem).filter((item): item is TodoItemView => item !== null);
 }
 
+function readTodoUpdateDiff(value: unknown): TodoUpdateDiff | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const before = readTodoItem(record.before);
+  const after = readTodoItem(record.after);
+  if (!before || !after) {
+    return null;
+  }
+
+  return { before, after };
+}
+
+function readChangedFields(diff: TodoUpdateDiff): string[] {
+  const changes: string[] = [];
+
+  if (diff.before.content !== diff.after.content) {
+    changes.push(`Content: "${diff.before.content}" -> "${diff.after.content}"`);
+  }
+
+  if (diff.before.status !== diff.after.status) {
+    changes.push(`Status: ${statusLabel(diff.before.status)} -> ${statusLabel(diff.after.status)}`);
+  }
+
+  if (diff.before.priority !== diff.after.priority) {
+    changes.push(`Priority: ${diff.before.priority} -> ${diff.after.priority}`);
+  }
+
+  return changes;
+}
+
 function priorityClasses(priority: string): string {
   if (priority === "high") {
     return "bg-rose-900 text-rose-200 border-rose-700";
@@ -89,6 +127,8 @@ function statusLabel(status: string): string {
 }
 
 export default function TodoToolCallRenderer(props: ToolCallRendererProps) {
+  const updateDiff = readTodoUpdateDiff(props.result);
+  const changedFields = updateDiff ? readChangedFields(updateDiff) : [];
   const requestedTodos = readTodos(props.args);
   const resultTodos = readTodos(props.result);
   const paramsText = props.fallbackParamsText || toPrettyText(props.args);
@@ -96,6 +136,17 @@ export default function TodoToolCallRenderer(props: ToolCallRendererProps) {
 
   return (
     <ToolCallCardBase toolName={props.toolName} status={props.status} timestamp={props.timestamp}>
+      <Show when={props.toolName === "todoupdate" && updateDiff !== null}>
+        <div class="mb-3 border border-cyan-700 bg-slate-900 rounded px-3 py-2">
+          <div class="text-xs text-cyan-300 mb-1">Updated todo: {updateDiff!.after.id}</div>
+          <Show when={changedFields.length > 0} fallback={<div class="text-xs text-slate-300">No field changes detected.</div>}>
+            <ul class="text-xs text-slate-200 space-y-1">
+              <For each={changedFields}>{(change) => <li>{change}</li>}</For>
+            </ul>
+          </Show>
+        </div>
+      </Show>
+
       <Show when={requestedTodos.length > 0}>
         <div class="text-xs text-cyan-300 mb-2">Requested todos: {requestedTodos.length}</div>
         <div class="mb-3 space-y-2">

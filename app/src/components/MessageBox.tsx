@@ -1,6 +1,7 @@
 import { For, Switch, Match, createEffect } from "solid-js";
 import AIMessage from "./AIMessage";
 import HumanMessage from "./HumanMessage";
+import ThinkingMessage from "./ThinkingMessage";
 import ToolMessage from "./ToolMessage";
 import ToolCallMessage from "./ToolCallMessage";
 import { useChat } from "../context/ChatContext";
@@ -30,6 +31,12 @@ export default function MessageBox() {
             </Match>
             <Match when={message.type === 'human'}>
               <HumanMessage
+                content={message.content}
+                timestamp={message.timestamp}
+              />
+            </Match>
+            <Match when={message.type === 'thinking'}>
+              <ThinkingMessage
                 content={message.content}
                 timestamp={message.timestamp}
               />

@@ -1,6 +1,6 @@
 export interface Message {
   id: string;
-  type: 'ai' | 'human' | 'tool' | 'tool-call';
+  type: 'ai' | 'human' | 'tool' | 'tool-call' | 'thinking';
   content: string;
   timestamp?: string;
   toolName?: string;

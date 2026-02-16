@@ -117,6 +117,37 @@ function upsertAIMessage(
   });
 }
 
+function upsertThinkingMessage(
+  setMessages: Setter<Message[]>,
+  id: string,
+  content: string,
+  timestampValue: string,
+): void {
+  setMessages((current) => {
+    const existingIndex = current.findIndex((message) => message.id === id);
+
+    if (existingIndex === -1) {
+      return [
+        ...current,
+        {
+          id,
+          type: "thinking",
+          content,
+          timestamp: timestampValue,
+        },
+      ];
+    }
+
+    const updated = [...current];
+    updated[existingIndex] = {
+      ...updated[existingIndex],
+      content,
+      type: "thinking",
+    };
+    return updated;
+  });
+}
+
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
   const [messages, setMessages] = createSignal(props.messages || []);
   const [isSending, setIsSending] = createSignal(false);
@@ -138,6 +169,9 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     const assistantMessageId = crypto.randomUUID();
     const assistantTimestamp = timestamp();
     let streamedText = "";
+    const thinkingMessageId = crypto.randomUUID();
+    const thinkingTimestamp = timestamp();
+    let streamedThinking = "";
 
     const appendAssistantChunk = (chunk: string): void => {
       if (chunk.length === 0) {
@@ -151,6 +185,20 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     const setAssistantText = (text: string): void => {
       streamedText = text;
       upsertAIMessage(setMessages, assistantMessageId, streamedText, assistantTimestamp);
+    };
+
+    const appendThinkingChunk = (chunk: string): void => {
+      if (chunk.length === 0) {
+        return;
+      }
+
+      streamedThinking = `${streamedThinking}${chunk}`;
+      upsertThinkingMessage(setMessages, thinkingMessageId, streamedThinking, thinkingTimestamp);
+    };
+
+    const setThinkingText = (text: string): void => {
+      streamedThinking = text;
+      upsertThinkingMessage(setMessages, thinkingMessageId, streamedThinking, thinkingTimestamp);
     };
 
     try {
@@ -183,6 +231,18 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
           if (artifactName === "output_end" || artifactName === "full_output") {
             if (artifactText.length > 0) {
               setAssistantText(artifactText);
+            }
+            return;
+          }
+
+          if (artifactName === "thinking_start" || artifactName === "thinking_delta") {
+            appendThinkingChunk(artifactText);
+            return;
+          }
+
+          if (artifactName === "thinking_end") {
+            if (artifactText.length > 0) {
+              setThinkingText(artifactText);
             }
             return;
           }

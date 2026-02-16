@@ -14,6 +14,8 @@ from pydantic_ai import (
     PartEndEvent,
     PartStartEvent,
     RetryPromptPart,
+    ThinkingPart,
+    ThinkingPartDelta,
     TextPart,
     TextPartDelta,
     ToolCallPart,
@@ -75,6 +77,7 @@ class PyAIAgentExecutor(AgentExecutor):
         output = "Agent didn't produce any output"
         res = None
         cur_artifact_id = None
+        thinking_artifact_id = None
         tool_calls: dict[str, dict[str, object | None]] = {}
         try:
             async for event in self.agent.run_stream_events(query, message_history=msg_history):
@@ -99,6 +102,28 @@ class PyAIAgentExecutor(AgentExecutor):
                                 "artifact": {
                                     "artifactId": cur_artifact_id,
                                     "name": "output_start",
+                                    "parts": [{"kind": "text", "text": part.content}],
+                                },
+                            },
+                        )
+                        event_index += 1
+                    if isinstance(part, ThinkingPart):
+                        thinking_artifact_id = str(uuid4())
+                        await updater.add_artifact(
+                            [simple_text_part(part.content)],
+                            name="thinking_start",
+                            artifact_id=thinking_artifact_id,
+                        )
+                        self.session_store.append_event(
+                            context_id,
+                            event_index,
+                            {
+                                "kind": "artifact-update",
+                                "contextId": context_id,
+                                "taskId": task.id,
+                                "artifact": {
+                                    "artifactId": thinking_artifact_id,
+                                    "name": "thinking_start",
                                     "parts": [{"kind": "text", "text": part.content}],
                                 },
                             },
@@ -130,6 +155,53 @@ class PyAIAgentExecutor(AgentExecutor):
                             },
                         )
                         event_index += 1
+                    if isinstance(delta, ThinkingPartDelta):
+                        content_delta = delta.content_delta if delta.content_delta else ""
+                        if thinking_artifact_id is None:
+                            thinking_artifact_id = str(uuid4())
+                            await updater.add_artifact(
+                                [simple_text_part(content_delta)],
+                                name="thinking_start",
+                                artifact_id=thinking_artifact_id,
+                            )
+                            self.session_store.append_event(
+                                context_id,
+                                event_index,
+                                {
+                                    "kind": "artifact-update",
+                                    "contextId": context_id,
+                                    "taskId": task.id,
+                                    "artifact": {
+                                        "artifactId": thinking_artifact_id,
+                                        "name": "thinking_start",
+                                        "parts": [{"kind": "text", "text": content_delta}],
+                                    },
+                                },
+                            )
+                            event_index += 1
+                        else:
+                            await updater.add_artifact(
+                                [simple_text_part(content_delta)],
+                                name="thinking_delta",
+                                append=True,
+                                artifact_id=thinking_artifact_id,
+                            )
+                            self.session_store.append_event(
+                                context_id,
+                                event_index,
+                                {
+                                    "kind": "artifact-update",
+                                    "contextId": context_id,
+                                    "taskId": task.id,
+                                    "append": True,
+                                    "artifact": {
+                                        "artifactId": thinking_artifact_id,
+                                        "name": "thinking_delta",
+                                        "parts": [{"kind": "text", "text": content_delta}],
+                                    },
+                                },
+                            )
+                            event_index += 1
 
                 if isinstance(event, PartEndEvent):
                     part = event.part
@@ -149,6 +221,29 @@ class PyAIAgentExecutor(AgentExecutor):
                                 "artifact": {
                                     "artifactId": cur_artifact_id,
                                     "name": "output_end",
+                                    "parts": [{"kind": "text", "text": part.content}],
+                                },
+                            },
+                        )
+                        event_index += 1
+                    if isinstance(part, ThinkingPart):
+                        if thinking_artifact_id is None:
+                            thinking_artifact_id = str(uuid4())
+                        await updater.add_artifact(
+                            [simple_text_part(part.content)],
+                            name="thinking_end",
+                            artifact_id=thinking_artifact_id,
+                        )
+                        self.session_store.append_event(
+                            context_id,
+                            event_index,
+                            {
+                                "kind": "artifact-update",
+                                "contextId": context_id,
+                                "taskId": task.id,
+                                "artifact": {
+                                    "artifactId": thinking_artifact_id,
+                                    "name": "thinking_end",
                                     "parts": [{"kind": "text", "text": part.content}],
                                 },
                             },

@@ -6,8 +6,6 @@ PydanticAI's @agent.tool decorator. It requires an `OPENAI_API_KEY` in the
 environment to run.
 """
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

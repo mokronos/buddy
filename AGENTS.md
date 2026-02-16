@@ -9,6 +9,7 @@ Buddy is an autonomous LLM agent with comprehensive system tools. It provides a 
 - **Python Version**: Requires Python 3.13+
 - **Package Manager**: Use `uv` for all project operations instead of pip
 - **Virtual Environment**: Managed via `uv sync`, but still available at `.venv`
+- **Typing Imports**: Do not use `from __future__ import annotations` (Python 3.13+ runtime)
 
 ## General Commands
 

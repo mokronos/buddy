@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from buddy.tools.todo_store import TodoItem, get_todos
 
 

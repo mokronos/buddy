@@ -9,6 +9,7 @@ from a2a.types import AgentCapabilities, AgentCard
 from devtools import pprint
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic_ai import Agent
 
@@ -60,6 +61,14 @@ def create_app(agent: Agent) -> FastAPI:
         agent_card_url="/a2a/.well-known/agent-card.json",
         rpc_url="/a2a",
         extended_agent_card_url="/a2a/agent/authenticatedExtendedCard",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @app.get("/sessions")

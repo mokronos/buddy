@@ -192,6 +192,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
             const firstDataPart = dataParts[0];
             const toolNameFromData = firstDataPart?.toolName;
             const toolName = typeof toolNameFromData === "string" ? toolNameFromData : artifactName;
+            const toolCallId = typeof firstDataPart?.toolCallId === "string" ? firstDataPart.toolCallId : undefined;
             const toolCallParamsText = toPrettyText(firstDataPart?.args);
             const toolResultText = firstDataPart ? toPrettyText(firstDataPart.result) : artifactText;
             const okFromData = firstDataPart?.ok;
@@ -202,6 +203,9 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
               type: "tool-call",
               content: toolResultText,
               toolName,
+              toolCallId,
+              toolCallArgs: firstDataPart?.args,
+              toolResultData: firstDataPart?.result,
               toolCallParams: toolCallParamsText,
               toolResult: toolResultText,
               toolStatus,

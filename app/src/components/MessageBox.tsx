@@ -45,6 +45,10 @@ export default function MessageBox() {
             <Match when={message.type === 'tool-call'}>
               <ToolCallMessage
                 toolName={message.toolName || "Unknown Tool"}
+                status={message.toolStatus}
+                toolCallId={message.toolCallId}
+                toolCallArgs={message.toolCallArgs}
+                toolResultData={message.toolResultData}
                 toolCallParams={message.toolCallParams}
                 toolResult={message.toolResult || message.content}
                 timestamp={message.timestamp}

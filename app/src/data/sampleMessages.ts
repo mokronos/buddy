@@ -5,6 +5,9 @@ export interface Message {
   timestamp?: string;
   toolName?: string;
   toolStatus?: 'success' | 'error' | 'running';
+  toolCallId?: string;
+  toolCallArgs?: unknown;
+  toolResultData?: unknown;
   toolCallParams?: string;
   toolResult?: string;
 }

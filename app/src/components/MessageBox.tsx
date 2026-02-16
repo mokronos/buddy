@@ -5,7 +5,7 @@ import ToolMessage from "./ToolMessage";
 import { useChat } from "../context/ChatContext";
 
 export default function MessageBox() {
-    const [messages, setMessages] = useChat();
+    const { messages } = useChat();
     let scrollContainerRef: HTMLDivElement | undefined;
 
     // Auto-scroll to bottom when messages change

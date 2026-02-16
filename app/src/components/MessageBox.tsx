@@ -2,6 +2,7 @@ import { For, Switch, Match, createEffect } from "solid-js";
 import AIMessage from "./AIMessage";
 import HumanMessage from "./HumanMessage";
 import ToolMessage from "./ToolMessage";
+import ToolCallMessage from "./ToolCallMessage";
 import { useChat } from "../context/ChatContext";
 
 export default function MessageBox() {
@@ -38,6 +39,14 @@ export default function MessageBox() {
                 toolName={message.toolName!}
                 content={message.content}
                 status={message.toolStatus}
+                timestamp={message.timestamp}
+              />
+            </Match>
+            <Match when={message.type === 'tool-call'}>
+              <ToolCallMessage
+                toolName={message.toolName || "Unknown Tool"}
+                toolCallParams={message.toolCallParams}
+                toolResult={message.toolResult || message.content}
                 timestamp={message.timestamp}
               />
             </Match>

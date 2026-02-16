@@ -45,6 +45,47 @@ function readTextParts(value: unknown): string {
     .join("\n");
 }
 
+function readDataParts(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((part) => {
+      if (!part || typeof part !== "object") {
+        return null;
+      }
+
+      const candidate = part as { kind?: unknown; data?: unknown };
+      if (candidate.kind !== "data") {
+        return null;
+      }
+
+      if (!candidate.data || typeof candidate.data !== "object" || Array.isArray(candidate.data)) {
+        return null;
+      }
+
+      return candidate.data as Record<string, unknown>;
+    })
+    .filter((entry): entry is Record<string, unknown> => entry !== null);
+}
+
+function toPrettyText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 function upsertAIMessage(
   setMessages: Setter<Message[]>,
   id: string,
@@ -143,6 +184,35 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
             if (artifactText.length > 0) {
               setAssistantText(artifactText);
             }
+            return;
+          }
+
+          if (artifactName === "tool_result") {
+            const dataParts = readDataParts(payload.artifact?.parts);
+            const firstDataPart = dataParts[0];
+            const toolNameFromData = firstDataPart?.toolName;
+            const toolName = typeof toolNameFromData === "string" ? toolNameFromData : artifactName;
+            const toolCallParamsText = toPrettyText(firstDataPart?.args);
+            const toolResultText = firstDataPart ? toPrettyText(firstDataPart.result) : artifactText;
+            const okFromData = firstDataPart?.ok;
+            const toolStatus = okFromData === false ? "error" : "success";
+
+            const toolCallMessage: Message = {
+              id: crypto.randomUUID(),
+              type: "tool-call",
+              content: toolResultText,
+              toolName,
+              toolCallParams: toolCallParamsText,
+              toolResult: toolResultText,
+              toolStatus,
+              timestamp: timestamp(),
+            };
+
+            setMessages((current) => [...current, toolCallMessage]);
+            return;
+          }
+
+          if (artifactName === "tool_call") {
             return;
           }
 

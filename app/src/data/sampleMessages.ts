@@ -1,10 +1,12 @@
 export interface Message {
   id: string;
-  type: 'ai' | 'human' | 'tool';
+  type: 'ai' | 'human' | 'tool' | 'tool-call';
   content: string;
   timestamp?: string;
   toolName?: string;
   toolStatus?: 'success' | 'error' | 'running';
+  toolCallParams?: string;
+  toolResult?: string;
 }
 
 export const sampleMessages: Message[] = [

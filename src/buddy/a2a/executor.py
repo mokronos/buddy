@@ -15,12 +15,14 @@ from pydantic_ai import (
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
+    RetryPromptPart,
     TextPart,
     TextPartDelta,
     ToolCallPart,
+    ToolReturnPart,
 )
 
-from buddy.a2a.utils import simple_text_part
+from buddy.a2a.utils import simple_data_part, simple_text_part
 from buddy.session_store import SessionStore
 
 
@@ -75,6 +77,7 @@ class PyAIAgentExecutor(AgentExecutor):
         output = "Agent didn't produce any output"
         res = None
         cur_artifact_id = None
+        tool_calls: dict[str, dict[str, object | None]] = {}
         async for event in self.agent.run_stream_events(query, message_history=msg_history):
             pprint(event)
 
@@ -153,6 +156,48 @@ class PyAIAgentExecutor(AgentExecutor):
                     )
                     event_index += 1
                 if isinstance(part, ToolCallPart):
+                    tool_call_id = part.tool_call_id
+                    tool_calls[tool_call_id] = {
+                        "args": part.args,
+                    }
+                    tool_call_artifact_id = str(uuid4())
+
+                    await updater.add_artifact(
+                        [
+                            simple_data_part({
+                                "toolName": part.tool_name,
+                                "toolCallId": tool_call_id,
+                                "args": part.args,
+                            })
+                        ],
+                        name="tool_call",
+                        artifact_id=tool_call_artifact_id,
+                    )
+                    self.session_store.append_event(
+                        context_id,
+                        event_index,
+                        {
+                            "kind": "artifact-update",
+                            "contextId": context_id,
+                            "taskId": task.id,
+                            "artifact": {
+                                "artifactId": tool_call_artifact_id,
+                                "name": "tool_call",
+                                "parts": [
+                                    {
+                                        "kind": "data",
+                                        "data": {
+                                            "toolName": part.tool_name,
+                                            "toolCallId": tool_call_id,
+                                            "args": part.args,
+                                        },
+                                    }
+                                ],
+                            },
+                        },
+                    )
+                    event_index += 1
+
                     await updater.update_status(
                         TaskState.working,
                         message=new_agent_text_message(f"Calling tool: {part.tool_name} with args: {part.args}"),
@@ -186,12 +231,38 @@ class PyAIAgentExecutor(AgentExecutor):
             if isinstance(event, FunctionToolResultEvent):
                 res = event.result
 
-                text = f"Tool {res.tool_name} returned: {res.content}"
+                if isinstance(res, ToolReturnPart):
+                    tool_name = res.tool_name
+                    tool_call_id = res.tool_call_id
+                    result_content: object = res.content
+                    ok = True
+                elif isinstance(res, RetryPromptPart):
+                    tool_name = res.tool_name if res.tool_name else "unknown_tool"
+                    tool_call_id = res.tool_call_id
+                    result_content = res.content
+                    ok = False
+                else:
+                    tool_name = "unknown_tool"
+                    tool_call_id = "unknown_tool_call"
+                    result_content = "unknown_result"
+                    ok = False
+
+                tool_call = tool_calls.get(tool_call_id)
+                tool_args = tool_call["args"] if tool_call and "args" in tool_call else None
+                tool_result_artifact_id = str(uuid4())
+
+                tool_result_data = {
+                    "toolName": tool_name,
+                    "toolCallId": tool_call_id,
+                    "args": tool_args,
+                    "result": result_content,
+                    "ok": ok,
+                }
 
                 await updater.add_artifact(
-                    [simple_text_part(text)],
+                    [simple_data_part(tool_result_data)],
                     name="tool_result",
-                    artifact_id=cur_artifact_id,
+                    artifact_id=tool_result_artifact_id,
                 )
                 self.session_store.append_event(
                     context_id,
@@ -201,9 +272,14 @@ class PyAIAgentExecutor(AgentExecutor):
                         "contextId": context_id,
                         "taskId": task.id,
                         "artifact": {
-                            "artifactId": cur_artifact_id,
+                            "artifactId": tool_result_artifact_id,
                             "name": "tool_result",
-                            "parts": [{"kind": "text", "text": text}],
+                            "parts": [
+                                {
+                                    "kind": "data",
+                                    "data": tool_result_data,
+                                }
+                            ],
                         },
                     },
                 )

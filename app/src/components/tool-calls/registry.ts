@@ -13,6 +13,9 @@ function normalizeToolName(toolName: string): string {
 const toolRenderers: Record<string, ToolCallRendererComponent> = {
   todowrite: TodoToolCallRenderer,
   todoread: TodoToolCallRenderer,
+  todoadd: TodoToolCallRenderer,
+  todoupdate: TodoToolCallRenderer,
+  tododelete: TodoToolCallRenderer,
   web_search: WebSearchToolCallRenderer,
   fetch_web_page: WebSearchToolCallRenderer,
 };

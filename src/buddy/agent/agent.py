@@ -3,8 +3,10 @@ from langfuse import get_client
 from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 
+from buddy.tools.todoadd import todoadd
+from buddy.tools.tododelete import tododelete
 from buddy.tools.todoread import todoread
-from buddy.tools.todowrite import todowrite
+from buddy.tools.todoupdate import todoupdate
 from buddy.tools.web_search import fetch_web_page, web_search
 
 load_dotenv()
@@ -21,8 +23,10 @@ web_tools = FunctionToolset(
 
 todo_tools = FunctionToolset(
     tools=[
-        todowrite,
         todoread,
+        todoadd,
+        todoupdate,
+        tododelete,
     ],
 )
 

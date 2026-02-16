@@ -1,10 +1,12 @@
 import { createSignal } from "solid-js";
+import PromptSuggestions from "./PromptSuggestions";
 import { useChat } from "../context/ChatContext";
 
 export default function InputBox() {
   const { sendMessage, isSending } = useChat();
   const [inputValue, setInputValue] = createSignal("");
   let formRef: HTMLFormElement | undefined;
+  let textareaRef: HTMLTextAreaElement | undefined;
 
   const handleSubmit = async (e: Event) => {
     e.preventDefault();
@@ -17,8 +19,15 @@ export default function InputBox() {
 
   return (
     <div class="w-full border-2 border-slate-700 p-6">
+      <PromptSuggestions
+        onSelect={(prompt) => {
+          setInputValue(prompt);
+          textareaRef?.focus();
+        }}
+      />
       <form ref={formRef} onSubmit={handleSubmit} class="flex gap-2">
         <textarea
+          ref={textareaRef}
           class="textarea flex-1 resize-none"
           placeholder="Type your message here..."
           value={inputValue()}

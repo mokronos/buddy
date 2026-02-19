@@ -2,7 +2,19 @@
 
 ## Project Overview
 
-Buddy is an autonomous LLM agent with comprehensive system tools. It provides a command-line interface to interact with large language models enhanced with powerful tools including a planner/notetaking application, Model Context Protocol (MCP) installer/manager, and code interpreter/Python REPL. The goal is to build a JARVIS-like assistant with self-improvement capabilities.
+Buddy is an autonomous LLM platform built around a server/client architecture.
+
+- The **server** is the core system: it creates and manages agents, and exposes them over the A2A protocol.
+- **Clients** connect to the server to communicate with and manage those agents.
+- `app/` is one of those clients.
+
+The goal is to build a JARVIS-like assistant with strong tooling and extensible agent workflows.
+
+## Architecture Notes
+
+- Treat `tui/` and `tui_new/` as legacy codepaths.
+- Do not prioritize new feature work in legacy TUIs unless explicitly requested.
+- Prefer changes that strengthen the server/client + A2A direction.
 
 ## Development Environment
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+from os import getenv
 
 
 def buddy_data_dir() -> Path:
@@ -15,11 +16,5 @@ def buddy_data_dir() -> Path:
 
 
 def _env(name: str, default: Path) -> Path:
-    value = _getenv(name)
+    value = getenv(name)
     return Path(value) if value else default
-
-
-def _getenv(name: str) -> str | None:
-    from os import getenv
-
-    return getenv(name)

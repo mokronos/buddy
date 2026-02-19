@@ -324,6 +324,12 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
           setMessages((current) => [...current, toolMessage]);
         }
       });
+
+      finishThinkingBlock();
+
+      if (streamedText.length === 0) {
+        setAssistantText("");
+      }
     } catch (error) {
       const errorMessage: Message = {
         id: crypto.randomUUID(),

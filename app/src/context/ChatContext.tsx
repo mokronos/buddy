@@ -169,8 +169,8 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     const assistantMessageId = crypto.randomUUID();
     const assistantTimestamp = timestamp();
     let streamedText = "";
-    const thinkingMessageId = crypto.randomUUID();
-    const thinkingTimestamp = timestamp();
+    let thinkingMessageId: string | null = null;
+    let thinkingTimestamp = "";
     let streamedThinking = "";
 
     const appendAssistantChunk = (chunk: string): void => {
@@ -192,13 +192,35 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
         return;
       }
 
+      if (thinkingMessageId === null) {
+        thinkingMessageId = crypto.randomUUID();
+        thinkingTimestamp = timestamp();
+      }
+
       streamedThinking = `${streamedThinking}${chunk}`;
       upsertThinkingMessage(setMessages, thinkingMessageId, streamedThinking, thinkingTimestamp);
     };
 
     const setThinkingText = (text: string): void => {
+      if (thinkingMessageId === null) {
+        thinkingMessageId = crypto.randomUUID();
+        thinkingTimestamp = timestamp();
+      }
+
       streamedThinking = text;
       upsertThinkingMessage(setMessages, thinkingMessageId, streamedThinking, thinkingTimestamp);
+    };
+
+    const startNewThinkingBlock = (): void => {
+      thinkingMessageId = crypto.randomUUID();
+      thinkingTimestamp = timestamp();
+      streamedThinking = "";
+    };
+
+    const finishThinkingBlock = (): void => {
+      thinkingMessageId = null;
+      thinkingTimestamp = "";
+      streamedThinking = "";
     };
 
     try {
@@ -235,7 +257,13 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
             return;
           }
 
-          if (artifactName === "thinking_start" || artifactName === "thinking_delta") {
+          if (artifactName === "thinking_start") {
+            startNewThinkingBlock();
+            appendThinkingChunk(artifactText);
+            return;
+          }
+
+          if (artifactName === "thinking_delta") {
             appendThinkingChunk(artifactText);
             return;
           }
@@ -244,10 +272,13 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
             if (artifactText.length > 0) {
               setThinkingText(artifactText);
             }
+            finishThinkingBlock();
             return;
           }
 
           if (artifactName === "tool_result") {
+            finishThinkingBlock();
+
             const dataParts = readDataParts(payload.artifact?.parts);
             const firstDataPart = dataParts[0];
             const toolNameFromData = firstDataPart?.toolName;
@@ -277,6 +308,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
           }
 
           if (artifactName === "tool_call") {
+            finishThinkingBlock();
             return;
           }
 

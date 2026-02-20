@@ -4,11 +4,12 @@ import HumanMessage from "./HumanMessage";
 import ThinkingMessage from "./ThinkingMessage";
 import ToolMessage from "./ToolMessage";
 import ToolCallMessage from "./ToolCallMessage";
+import WorkingIndicator from "./WorkingIndicator";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 import { useChat } from "../context/ChatContext";
 
 export default function MessageBox() {
-  const { messages } = useChat();
+  const { messages, isSending } = useChat();
   let scrollContainerRef: HTMLDivElement | undefined;
   const [isAtBottom, setIsAtBottom] = createSignal(true);
 
@@ -37,10 +38,21 @@ export default function MessageBox() {
 
   createEffect(() => {
     messages();
+    isSending();
     if (isAtBottom()) {
       scrollToBottom();
     }
   });
+
+  const shouldShowWorkingIndicator = () => {
+    if (!isSending()) {
+      return false;
+    }
+
+    const currentMessages = messages();
+    const latestMessage = currentMessages[currentMessages.length - 1];
+    return latestMessage?.type !== "thinking";
+  };
 
   return (
     <div class="relative flex-1 min-h-0 w-full">
@@ -93,6 +105,9 @@ export default function MessageBox() {
             </Switch>
           )}
         </For>
+        <Show when={shouldShowWorkingIndicator()}>
+          <WorkingIndicator />
+        </Show>
       </div>
       <Show when={!isAtBottom()}>
         <ScrollToBottomButton onClick={scrollToBottom} />

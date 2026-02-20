@@ -1,13 +1,33 @@
 import type { MessageSendParams } from "@a2a-js/sdk";
-import { createContext, createSignal, useContext, type Accessor, type JSX, type Setter } from "solid-js";
-import { createA2AClient } from "~/a2a/client";
+import {
+  createContext,
+  createSignal,
+  onMount,
+  useContext,
+  type Accessor,
+  type JSX,
+  type Setter,
+} from "solid-js";
+import { createA2AClient, DEFAULT_A2A_BASE_URL } from "~/a2a/client";
 import type { Message } from "~/data/sampleMessages";
+
+export interface AgentEndpoint {
+  key: string;
+  name: string;
+  mountPath: string;
+  agentCardPath: string;
+  url: string;
+}
 
 interface ChatContextValue {
   messages: Accessor<Message[]>;
   setMessages: Setter<Message[]>;
   sendMessage: (content: string) => Promise<void>;
   isSending: Accessor<boolean>;
+  agents: Accessor<AgentEndpoint[]>;
+  activeAgentKey: Accessor<string>;
+  activeAgentName: Accessor<string>;
+  setActiveAgentKey: (agentKey: string) => void;
 }
 
 const ChatContext = createContext<ChatContextValue>();
@@ -169,10 +189,99 @@ function appendMessageKeepingAssistantLast(
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
   const [messages, setMessages] = createSignal(props.messages || []);
   const [isSending, setIsSending] = createSignal(false);
+  const [agents, setAgents] = createSignal<AgentEndpoint[]>([]);
+  const [activeAgentKey, setActiveAgentKeySignal] = createSignal("buddy");
+  const [activeAgentName, setActiveAgentName] = createSignal("buddy");
   const [conversationContextId, setConversationContextId] = createSignal<string | null>(null);
-  const a2aClient = createA2AClient({
-    agentCardPath: "/a2a/.well-known/agent-card.json",
+
+  onMount(async () => {
+    try {
+      const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`);
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        defaultAgentKey?: unknown;
+        agents?: unknown;
+      };
+
+      if (!Array.isArray(payload.agents)) {
+        return;
+      }
+
+      const loadedAgents = payload.agents
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return null;
+          }
+
+          const candidate = entry as {
+            key?: unknown;
+            name?: unknown;
+            mountPath?: unknown;
+            agentCardPath?: unknown;
+            url?: unknown;
+          };
+
+          if (
+            typeof candidate.key !== "string" ||
+            typeof candidate.name !== "string" ||
+            typeof candidate.mountPath !== "string" ||
+            typeof candidate.agentCardPath !== "string" ||
+            typeof candidate.url !== "string"
+          ) {
+            return null;
+          }
+
+          return {
+            key: candidate.key,
+            name: candidate.name,
+            mountPath: candidate.mountPath,
+            agentCardPath: candidate.agentCardPath,
+            url: candidate.url,
+          } as AgentEndpoint;
+        })
+        .filter((entry): entry is AgentEndpoint => entry !== null);
+
+      if (loadedAgents.length === 0) {
+        return;
+      }
+
+      setAgents(loadedAgents);
+
+      const defaultAgentKey =
+        typeof payload.defaultAgentKey === "string" &&
+        loadedAgents.some((agent) => agent.key === payload.defaultAgentKey)
+          ? payload.defaultAgentKey
+          : loadedAgents[0].key;
+
+      const defaultAgent = loadedAgents.find((agent) => agent.key === defaultAgentKey) ?? loadedAgents[0];
+      setActiveAgentKeySignal(defaultAgent.key);
+      setActiveAgentName(defaultAgent.name);
+    } catch {
+      setAgents([
+        {
+          key: "buddy",
+          name: "buddy-agent",
+          mountPath: "/a2a/buddy",
+          agentCardPath: "/a2a/buddy/.well-known/agent-card.json",
+          url: "/a2a/buddy",
+        },
+      ]);
+      setActiveAgentKeySignal("buddy");
+      setActiveAgentName("buddy-agent");
+    }
   });
+
+  const setActiveAgentKey = (agentKey: string): void => {
+    const selectedAgent = agents().find((agent) => agent.key === agentKey);
+    if (!selectedAgent) {
+      return;
+    }
+    setActiveAgentKeySignal(selectedAgent.key);
+    setActiveAgentName(selectedAgent.name);
+  };
 
   const sendMessage = async (content: string): Promise<void> => {
     const activeContextId = conversationContextId() ?? crypto.randomUUID();
@@ -248,6 +357,12 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     };
 
     try {
+      const selectedAgent = agents().find((agent) => agent.key === activeAgentKey());
+      const agentCardPath = selectedAgent?.agentCardPath ?? "/a2a/buddy/.well-known/agent-card.json";
+      const a2aClient = createA2AClient({
+        agentCardPath,
+      });
+
       await a2aClient.sendMessageStream(createTextMessageParams(content, activeContextId), (event) => {
         if (event.kind === "message") {
           const payload = event as { role?: unknown; parts?: unknown };
@@ -375,7 +490,18 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
   };
 
   return (
-    <ChatContext.Provider value={{ messages, setMessages, sendMessage, isSending }}>
+    <ChatContext.Provider
+      value={{
+        messages,
+        setMessages,
+        sendMessage,
+        isSending,
+        agents,
+        activeAgentKey,
+        activeAgentName,
+        setActiveAgentKey,
+      }}
+    >
       {props.children}
     </ChatContext.Provider>
   );

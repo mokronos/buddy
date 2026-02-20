@@ -63,7 +63,7 @@ def _create_a2a_sub_app(agent: Agent, card_name: str, card_url: str) -> FastAPI:
 
 def create_app(agents: dict[str, Agent]) -> FastAPI:
     app = FastAPI()
-    mounted_sub_apps: dict[str, FastAPI] = {}
+    agent_index: list[dict[str, str]] = []
 
     for agent_key, agent in agents.items():
         mount_path = f"/a2a/{agent_key}"
@@ -71,11 +71,17 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         card_name = agent.name or f"buddy-{agent_key}"
         sub_app = _create_a2a_sub_app(agent=agent, card_name=card_name, card_url=card_url)
         app.mount(mount_path, sub_app)
-        mounted_sub_apps[agent_key] = sub_app
+        agent_index.append({
+            "key": agent_key,
+            "name": card_name,
+            "mountPath": mount_path,
+            "agentCardPath": f"{mount_path}/.well-known/agent-card.json",
+            "url": card_url,
+        })
 
-    if mounted_sub_apps:
-        first_agent_key = next(iter(mounted_sub_apps))
-        app.mount("/a2a", mounted_sub_apps[first_agent_key])
+    default_agent_key = "buddy" if any(item["key"] == "buddy" for item in agent_index) else None
+    if default_agent_key is None and agent_index:
+        default_agent_key = agent_index[0]["key"]
 
     app.add_middleware(
         CORSMiddleware,
@@ -103,6 +109,13 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             "session": session,
             "messages": session_store.load_chat_messages(session_id),
             "events": session_store.load_events(session_id),
+        })
+
+    @app.get("/agents")
+    async def list_agents() -> JSONResponse:
+        return JSONResponse({
+            "defaultAgentKey": default_agent_key,
+            "agents": agent_index,
         })
 
     return app

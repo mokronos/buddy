@@ -1,7 +1,7 @@
 import { ClientFactory, type Client } from "@a2a-js/sdk/client";
 import type { MessageSendParams } from "@a2a-js/sdk";
 
-const DEFAULT_A2A_BASE_URL = "http://localhost:10001";
+export const DEFAULT_A2A_BASE_URL = "http://localhost:10001";
 
 export interface A2AClientConfig {
   baseUrl?: string;

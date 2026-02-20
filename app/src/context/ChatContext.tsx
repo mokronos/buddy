@@ -12,11 +12,12 @@ interface ChatContextValue {
 
 const ChatContext = createContext<ChatContextValue>();
 
-function createTextMessageParams(text: string): MessageSendParams {
+function createTextMessageParams(text: string, contextId: string): MessageSendParams {
   return {
     message: {
       kind: "message",
       messageId: crypto.randomUUID(),
+      contextId,
       role: "user",
       parts: [{ kind: "text", text }],
     },
@@ -148,14 +149,37 @@ function upsertThinkingMessage(
   });
 }
 
+function appendMessageKeepingAssistantLast(
+  current: Message[],
+  messageToAppend: Message,
+  assistantMessageId: string,
+): Message[] {
+  const next = [...current, messageToAppend];
+  const assistantIndex = next.findIndex((message) => message.id === assistantMessageId);
+
+  if (assistantIndex === -1 || assistantIndex === next.length - 1) {
+    return next;
+  }
+
+  const assistantMessage = next[assistantIndex];
+  const withoutAssistant = next.filter((_, index) => index !== assistantIndex);
+  return [...withoutAssistant, assistantMessage];
+}
+
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
   const [messages, setMessages] = createSignal(props.messages || []);
   const [isSending, setIsSending] = createSignal(false);
+  const [conversationContextId, setConversationContextId] = createSignal<string | null>(null);
   const a2aClient = createA2AClient({
     agentCardPath: "/a2a/.well-known/agent-card.json",
   });
 
   const sendMessage = async (content: string): Promise<void> => {
+    const activeContextId = conversationContextId() ?? crypto.randomUUID();
+    if (conversationContextId() === null) {
+      setConversationContextId(activeContextId);
+    }
+
     const humanMessage: Message = {
       id: crypto.randomUUID(),
       type: "human",
@@ -224,7 +248,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     };
 
     try {
-      await a2aClient.sendMessageStream(createTextMessageParams(content), (event) => {
+      await a2aClient.sendMessageStream(createTextMessageParams(content, activeContextId), (event) => {
         if (event.kind === "message") {
           const payload = event as { role?: unknown; parts?: unknown };
           const isAgentMessage = payload.role === "agent";
@@ -303,7 +327,9 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
               timestamp: timestamp(),
             };
 
-            setMessages((current) => [...current, toolCallMessage]);
+            setMessages((current) =>
+              appendMessageKeepingAssistantLast(current, toolCallMessage, assistantMessageId),
+            );
             return;
           }
 
@@ -321,7 +347,9 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
             timestamp: timestamp(),
           };
 
-          setMessages((current) => [...current, toolMessage]);
+          setMessages((current) =>
+            appendMessageKeepingAssistantLast(current, toolMessage, assistantMessageId),
+          );
         }
       });
 

@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from langfuse import get_client
+from langfuse import Langfuse
 from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 
@@ -8,8 +8,15 @@ from buddy.tools.web_search import fetch_web_page, web_search
 
 load_dotenv()
 
-langfuse = get_client()
-Agent.instrument_all()
+langfuse = Langfuse(blocked_instrumentation_scopes=["a2a-python-sdk"])
+# Verify connection
+try:
+    if langfuse.auth_check():
+        print("Langfuse client is authenticated and ready!")
+    else:
+        print("Authentication failed. Please check your credentials and host.")
+except Exception as e:
+    print(f"Langfuse connection error (skipping): {e}")
 
 web_tools = FunctionToolset(
     tools=[
@@ -35,3 +42,5 @@ agent = Agent(
     toolsets=[web_tools, todo_tools],
     instrument=True,
 )
+
+# agent.instrument_all()

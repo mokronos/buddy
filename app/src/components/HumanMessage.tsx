@@ -1,3 +1,5 @@
+import MarkdownContent from "./MarkdownContent";
+
 interface HumanMessageProps {
   content: string;
   timestamp?: string;
@@ -16,7 +18,7 @@ export default function HumanMessage(props: HumanMessageProps) {
             <span class="text-white text-xs font-bold">H</span>
           </div>
         </div>
-        <div class="text-gray-100 whitespace-pre-wrap">{props.content}</div>
+        <MarkdownContent content={props.content} />
       </div>
     </div>
   );

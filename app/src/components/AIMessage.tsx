@@ -1,3 +1,5 @@
+import MarkdownContent from "./MarkdownContent";
+
 interface AIMessageProps {
   content: string;
   timestamp?: string;
@@ -16,7 +18,7 @@ export default function AIMessage(props: AIMessageProps) {
             <span class="text-xs text-gray-500">{props.timestamp}</span>
           )}
         </div>
-        <div class="text-gray-100 whitespace-pre-wrap">{props.content}</div>
+        <MarkdownContent content={props.content} />
       </div>
     </div>
   );

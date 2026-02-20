@@ -4,6 +4,7 @@ import os
 from typing import cast
 
 from openai import AsyncOpenAI
+from pydantic_ai import ModelSettings
 from pydantic_ai.models.openai import OpenAIModelName, OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -39,4 +40,8 @@ def create_codex_model(
     )
 
     casted_model_name: OpenAIModelName = cast(OpenAIModelName, model_name)
-    return OpenAIResponsesModel(casted_model_name, provider=OpenAIProvider(openai_client=openai_client))
+    return OpenAIResponsesModel(
+        casted_model_name,
+        provider=OpenAIProvider(openai_client=openai_client),
+        settings=cast(ModelSettings, {"openai_store": False}),
+    )

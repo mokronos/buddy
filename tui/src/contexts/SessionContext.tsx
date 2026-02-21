@@ -44,6 +44,7 @@ export const SessionProvider = (props: SessionProviderProps) => {
       setSessionError(null);
     } catch (err) {
       setSessionError(err instanceof Error ? err.message : "Failed to load sessions");
+      throw err;
     }
   };
 

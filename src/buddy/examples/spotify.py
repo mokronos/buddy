@@ -35,19 +35,13 @@ def search_song(query, limit=5):
 
 
 def play_song(uri, device_id=None):
-    try:
-        sp.start_playback(device_id=device_id, uris=[uri])
-        return f"Playing {uri}."
-    except Exception as e:
-        return f"Failed to play song: {e}"
+    sp.start_playback(device_id=device_id, uris=[uri])
+    return f"Playing {uri}."
 
 
 def stop_playback(device_id=None):
-    try:
-        sp.pause_playback(device_id=device_id)
-        return "Playback paused."
-    except Exception as e:
-        return f"Failed to pause playback: {e}"
+    sp.pause_playback(device_id=device_id)
+    return "Playback paused."
 
 
 # --- Example Usage ---

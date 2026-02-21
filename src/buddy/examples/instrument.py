@@ -12,14 +12,10 @@ from langfuse import get_client
 
 langfuse = get_client()
 
-# Verify connection
-try:
-    if langfuse.auth_check():
-        print("Langfuse client is authenticated and ready!")
-    else:
-        print("Authentication failed. Please check your credentials and host.")
-except Exception as e:
-    print(f"Langfuse connection error (skipping): {e}")
+if not langfuse.auth_check():
+    raise RuntimeError("Langfuse authentication failed. Check credentials and host.")
+
+print("Langfuse client is authenticated and ready!")
 
 model = create_codex_model(model_name="gpt-5.2")
 

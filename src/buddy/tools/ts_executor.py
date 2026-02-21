@@ -18,10 +18,10 @@ def execute_ts_code(code: str) -> str:
         )
 
         if result.returncode != 0:
-            return f"Error: {result.stderr}"
+            raise RuntimeError(result.stderr)
 
         return result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        return "Error: Script execution timed out."
+    except subprocess.TimeoutExpired as error:
+        raise TimeoutError("Script execution timed out.") from error
     finally:
         temp_path.unlink(missing_ok=True)

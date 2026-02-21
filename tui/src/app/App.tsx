@@ -220,6 +220,7 @@ export const App = () => {
         role: "status",
         content: `Error: ${messageText}`,
       });
+      throw err;
     } finally {
       setIsSending(false);
     }
@@ -270,7 +271,10 @@ export const App = () => {
             setStatusText(event.status.state);
           }
         });
-      } catch {
+      } catch (err) {
+        const messageText = err instanceof Error ? err.message : "Failed to restore session";
+        setError(messageText);
+        throw err;
       }
       setShowSessionPicker(false);
     })();

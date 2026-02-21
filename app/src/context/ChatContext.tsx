@@ -100,11 +100,7 @@ function toPrettyText(value: unknown): string {
     return value;
   }
 
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
+  return JSON.stringify(value, null, 2);
 }
 
 function upsertAIMessage(
@@ -178,83 +174,69 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
   const [conversationContextId, setConversationContextId] = createSignal<string | null>(null);
 
   onMount(async () => {
-    try {
-      const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`);
-      if (!response.ok) {
-        return;
-      }
-
-      const payload = (await response.json()) as {
-        defaultAgentKey?: unknown;
-        agents?: unknown;
-      };
-
-      if (!Array.isArray(payload.agents)) {
-        return;
-      }
-
-      const loadedAgents = payload.agents
-        .map((entry) => {
-          if (!entry || typeof entry !== "object") {
-            return null;
-          }
-
-          const candidate = entry as {
-            key?: unknown;
-            name?: unknown;
-            mountPath?: unknown;
-            agentCardPath?: unknown;
-            url?: unknown;
-          };
-
-          if (
-            typeof candidate.key !== "string" ||
-            typeof candidate.name !== "string" ||
-            typeof candidate.mountPath !== "string" ||
-            typeof candidate.agentCardPath !== "string" ||
-            typeof candidate.url !== "string"
-          ) {
-            return null;
-          }
-
-          return {
-            key: candidate.key,
-            name: candidate.name,
-            mountPath: candidate.mountPath,
-            agentCardPath: candidate.agentCardPath,
-            url: candidate.url,
-          } as AgentEndpoint;
-        })
-        .filter((entry): entry is AgentEndpoint => entry !== null);
-
-      if (loadedAgents.length === 0) {
-        return;
-      }
-
-      setAgents(loadedAgents);
-
-      const defaultAgentKey =
-        typeof payload.defaultAgentKey === "string" &&
-        loadedAgents.some((agent) => agent.key === payload.defaultAgentKey)
-          ? payload.defaultAgentKey
-          : loadedAgents[0].key;
-
-      const defaultAgent = loadedAgents.find((agent) => agent.key === defaultAgentKey) ?? loadedAgents[0];
-      setActiveAgentKeySignal(defaultAgent.key);
-      setActiveAgentName(defaultAgent.name);
-    } catch {
-      setAgents([
-        {
-          key: "buddy",
-          name: "buddy-agent",
-          mountPath: "/a2a/buddy",
-          agentCardPath: "/a2a/buddy/.well-known/agent-card.json",
-          url: "/a2a/buddy",
-        },
-      ]);
-      setActiveAgentKeySignal("buddy");
-      setActiveAgentName("buddy-agent");
+    const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch agents: HTTP ${response.status}`);
     }
+
+    const payload = (await response.json()) as {
+      defaultAgentKey?: unknown;
+      agents?: unknown;
+    };
+
+    if (!Array.isArray(payload.agents)) {
+      throw new Error("Invalid /agents response: missing agents array");
+    }
+
+    const loadedAgents = payload.agents
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") {
+          return null;
+        }
+
+        const candidate = entry as {
+          key?: unknown;
+          name?: unknown;
+          mountPath?: unknown;
+          agentCardPath?: unknown;
+          url?: unknown;
+        };
+
+        if (
+          typeof candidate.key !== "string" ||
+          typeof candidate.name !== "string" ||
+          typeof candidate.mountPath !== "string" ||
+          typeof candidate.agentCardPath !== "string" ||
+          typeof candidate.url !== "string"
+        ) {
+          return null;
+        }
+
+        return {
+          key: candidate.key,
+          name: candidate.name,
+          mountPath: candidate.mountPath,
+          agentCardPath: candidate.agentCardPath,
+          url: candidate.url,
+        } as AgentEndpoint;
+      })
+      .filter((entry): entry is AgentEndpoint => entry !== null);
+
+    if (loadedAgents.length === 0) {
+      throw new Error("No agents returned from /agents");
+    }
+
+    setAgents(loadedAgents);
+
+    const defaultAgentKey =
+      typeof payload.defaultAgentKey === "string" &&
+      loadedAgents.some((agent) => agent.key === payload.defaultAgentKey)
+        ? payload.defaultAgentKey
+        : loadedAgents[0].key;
+
+    const defaultAgent = loadedAgents.find((agent) => agent.key === defaultAgentKey) ?? loadedAgents[0];
+    setActiveAgentKeySignal(defaultAgent.key);
+    setActiveAgentName(defaultAgent.name);
   });
 
   const setActiveAgentKey = (agentKey: string): void => {
@@ -463,6 +445,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       };
 
       setMessages((current) => [...current, errorMessage]);
+      throw error;
     } finally {
       setIsSending(false);
     }

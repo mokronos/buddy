@@ -18,46 +18,33 @@ class SearchResult:
 
 def web_search(query: str) -> str:
     params = {"q": query, "format": "json"}
-    
+
     try:
         response = requests.get(
-            url, 
+            url,
             params=params,
             timeout=10,
-            headers={'User-Agent': 'Mozilla/5.0 (compatible; MyBot/1.0)'}
+            headers={"User-Agent": "Mozilla/5.0 (compatible; MyBot/1.0)"},
         )
-        
-        if response.ok:
-            data = response.json()
-            results = []
-            # results are in data["results"]
-            for r in data.get("results", [])[:5]:
-                results.append({
-                    "title": r.get("title", "No title"),
-                    "url": r.get("url", "")
-                })
-            return json.dumps(results)
-        else:
-            return json.dumps({
-                "error": f"HTTP {response.status_code}: {response.text[:200]}"
-            })
-            
     except ConnectionError as e:
-        return json.dumps({
-            "error": f"Connection failed to SearXNG at {url}. Is it running? Details: {str(e)}"
-        })
-    except Timeout:
-        return json.dumps({
-            "error": f"Request to SearXNG timed out after 10 seconds"
-        })
+        raise ConnectionError(f"Connection failed to SearXNG at {url}. Is it running?") from e
+    except Timeout as e:
+        raise TimeoutError("Request to SearXNG timed out after 10 seconds") from e
     except RequestException as e:
-        return json.dumps({
-            "error": f"Request failed: {str(e)}"
+        raise RuntimeError("Request to SearXNG failed") from e
+
+    if not response.ok:
+        raise RuntimeError(f"SearXNG returned HTTP {response.status_code}: {response.text[:200]}")
+
+    data = response.json()
+    results = []
+    # results are in data["results"]
+    for r in data.get("results", [])[:5]:
+        results.append({
+            "title": r.get("title", "No title"),
+            "url": r.get("url", ""),
         })
-    except Exception as e:
-        return json.dumps({
-            "error": f"Unexpected error: {str(e)}"
-        })
+    return json.dumps(results)
 
 
 def fetch_web_page(url: str) -> str:

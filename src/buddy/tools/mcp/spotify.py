@@ -60,22 +60,16 @@ def search_song(ctx: Context, query: str, limit: int = 5) -> str:
 def play_song(ctx: Context, uri: str, device_id: str = None) -> str:
     """Plays a song on the specified device."""
     sp = get_spotify_client(ctx)
-    try:
-        sp.start_playback(device_id=device_id, uris=[uri])
-        return f"Playing {uri}."
-    except Exception as e:
-        return f"Failed to play song: {e}"
+    sp.start_playback(device_id=device_id, uris=[uri])
+    return f"Playing {uri}."
 
 
 @mcp.tool
 def stop_playback(ctx: Context, device_id: str = None) -> str:
     """Stops playback on the specified device."""
     sp = get_spotify_client(ctx)
-    try:
-        sp.pause_playback(device_id=device_id)
-        return "Playback paused."
-    except Exception as e:
-        return f"Failed to pause playback: {e}"
+    sp.pause_playback(device_id=device_id)
+    return "Playback paused."
 
 
 if __name__ == "__main__":

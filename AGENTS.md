@@ -89,6 +89,15 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Fail Fast on Errors
+
+**Prefer explicit failures over synthetic fallback behavior.**
+
+- If execution fails, raise an error instead of emitting fake/synthetic success-like artifacts.
+- Use assertions for invariants that should never fail.
+- Add fallback handling only when explicitly requested and clearly scoped.
+- Preserve raw error context so failures are debuggable from logs/events.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

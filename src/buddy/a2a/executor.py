@@ -440,35 +440,6 @@ class PyAIAgentExecutor(AgentExecutor):
             res = await run_task
         except Exception as error:
             error_text = str(error)
-            error_artifact_id = str(uuid4())
-            error_data = {
-                "toolName": "agent",
-                "toolCallId": "execution_error",
-                "args": {"query": query},
-                "result": error_text,
-                "ok": False,
-            }
-            await updater.add_artifact(
-                [simple_data_part(error_data)],
-                name="tool_result",
-                artifact_id=error_artifact_id,
-            )
-            self.session_store.append_event(
-                context_id,
-                event_index,
-                {
-                    "kind": "artifact-update",
-                    "contextId": context_id,
-                    "taskId": task.id,
-                    "artifact": {
-                        "artifactId": error_artifact_id,
-                        "name": "tool_result",
-                        "parts": [{"kind": "data", "data": error_data}],
-                    },
-                },
-            )
-            event_index += 1
-
             await updater.failed(new_agent_text_message(error_text))
             self.session_store.append_event(
                 context_id,
@@ -489,7 +460,7 @@ class PyAIAgentExecutor(AgentExecutor):
                     },
                 },
             )
-            return
+            raise RuntimeError(error_text) from error
 
         if res is None:
             raise ValueError("Agent produced no result")

@@ -39,6 +39,7 @@ def create_agent(name: str) -> Agent:
     return Agent(
         model="openrouter:openrouter/free",
         name=name,
+        retries=5,
         # model="google-gla:gemini-2.5-flash",
         # model="google-gla:gemini-2.5-pro",
         # model="google-gla:gemini-2.5-flash-lite",

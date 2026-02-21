@@ -169,23 +169,6 @@ function upsertThinkingMessage(
   });
 }
 
-function appendMessageKeepingAssistantLast(
-  current: Message[],
-  messageToAppend: Message,
-  assistantMessageId: string,
-): Message[] {
-  const next = [...current, messageToAppend];
-  const assistantIndex = next.findIndex((message) => message.id === assistantMessageId);
-
-  if (assistantIndex === -1 || assistantIndex === next.length - 1) {
-    return next;
-  }
-
-  const assistantMessage = next[assistantIndex];
-  const withoutAssistant = next.filter((_, index) => index !== assistantIndex);
-  return [...withoutAssistant, assistantMessage];
-}
-
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
   const [messages, setMessages] = createSignal(props.messages || []);
   const [isSending, setIsSending] = createSignal(false);
@@ -442,9 +425,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
               timestamp: timestamp(),
             };
 
-            setMessages((current) =>
-              appendMessageKeepingAssistantLast(current, toolCallMessage, assistantMessageId),
-            );
+            setMessages((current) => [...current, toolCallMessage]);
             return;
           }
 
@@ -462,9 +443,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
             timestamp: timestamp(),
           };
 
-          setMessages((current) =>
-            appendMessageKeepingAssistantLast(current, toolMessage, assistantMessageId),
-          );
+          setMessages((current) => [...current, toolMessage]);
         }
       });
 

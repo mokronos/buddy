@@ -13,7 +13,7 @@ The goal is to build a JARVIS-like assistant with strong tooling and extensible 
 ## Architecture Notes
 
 - Treat `tui/` and `tui_new/` as legacy codepaths.
-- Do not prioritize new feature work in legacy TUIs unless explicitly requested.
+- Do not do any work in legacy TUIs unless explicitly requested.
 - Prefer changes that strengthen the server/client + A2A direction.
 
 ## Development Environment

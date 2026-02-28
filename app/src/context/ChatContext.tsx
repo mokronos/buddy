@@ -17,6 +17,9 @@ export interface AgentEndpoint {
   mountPath: string;
   agentCardPath: string;
   url: string;
+  description: string | null;
+  version: string | null;
+  skills: string[];
 }
 
 interface ChatContextValue {
@@ -101,6 +104,73 @@ function toPrettyText(value: unknown): string {
   }
 
   return JSON.stringify(value, null, 2);
+}
+
+interface AgentCardDetails {
+  description: string | null;
+  version: string | null;
+  skills: string[];
+}
+
+function readStringValue(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function readAgentCardDetails(value: unknown): AgentCardDetails {
+  if (!value || typeof value !== "object") {
+    return {
+      description: null,
+      version: null,
+      skills: [],
+    };
+  }
+
+  const payload = value as {
+    description?: unknown;
+    version?: unknown;
+    skills?: unknown;
+  };
+
+  const skills = Array.isArray(payload.skills)
+    ? payload.skills
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return null;
+          }
+
+          const skill = entry as { name?: unknown; id?: unknown };
+          const skillName = readStringValue(skill.name);
+          if (skillName) {
+            return skillName;
+          }
+
+          return readStringValue(skill.id);
+        })
+        .filter((entry): entry is string => entry !== null)
+    : [];
+
+  return {
+    description: readStringValue(payload.description),
+    version: readStringValue(payload.version),
+    skills,
+  };
+}
+
+function resolveAgentCardUrl(agentCardPath: string): string {
+  if (agentCardPath.startsWith("http://") || agentCardPath.startsWith("https://")) {
+    return agentCardPath;
+  }
+
+  if (agentCardPath.startsWith("/")) {
+    return `${DEFAULT_A2A_BASE_URL}${agentCardPath}`;
+  }
+
+  return `${DEFAULT_A2A_BASE_URL}/${agentCardPath}`;
 }
 
 function upsertAIMessage(
@@ -218,6 +288,9 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
           mountPath: candidate.mountPath,
           agentCardPath: candidate.agentCardPath,
           url: candidate.url,
+          description: null,
+          version: null,
+          skills: [],
         } as AgentEndpoint;
       })
       .filter((entry): entry is AgentEndpoint => entry !== null);
@@ -226,15 +299,38 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       throw new Error("No agents returned from /agents");
     }
 
-    setAgents(loadedAgents);
+    const loadedAgentsWithDetails = await Promise.all(
+      loadedAgents.map(async (agent) => {
+        try {
+          const response = await fetch(resolveAgentCardUrl(agent.agentCardPath));
+          if (!response.ok) {
+            return agent;
+          }
+
+          const cardPayload = (await response.json()) as unknown;
+          const details = readAgentCardDetails(cardPayload);
+          return {
+            ...agent,
+            description: details.description,
+            version: details.version,
+            skills: details.skills,
+          };
+        } catch {
+          return agent;
+        }
+      }),
+    );
+
+    setAgents(loadedAgentsWithDetails);
 
     const defaultAgentKey =
       typeof payload.defaultAgentKey === "string" &&
-      loadedAgents.some((agent) => agent.key === payload.defaultAgentKey)
+      loadedAgentsWithDetails.some((agent) => agent.key === payload.defaultAgentKey)
         ? payload.defaultAgentKey
-        : loadedAgents[0].key;
+        : loadedAgentsWithDetails[0].key;
 
-    const defaultAgent = loadedAgents.find((agent) => agent.key === defaultAgentKey) ?? loadedAgents[0];
+    const defaultAgent =
+      loadedAgentsWithDetails.find((agent) => agent.key === defaultAgentKey) ?? loadedAgentsWithDetails[0];
     setActiveAgentKeySignal(defaultAgent.key);
     setActiveAgentName(defaultAgent.name);
   });

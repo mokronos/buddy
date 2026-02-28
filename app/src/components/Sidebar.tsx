@@ -1,28 +1,26 @@
 import { useChat } from "~/context/ChatContext";
+import AgentCard from "~/components/AgentCard";
 
 export default function Sidebar() {
   const { agents, activeAgentKey, activeAgentName, setActiveAgentKey } = useChat();
 
   return (
-    <div class="flex h-full w-1/6 flex-col gap-4 border-r border-zinc-700 bg-zinc-900 p-4 text-zinc-200">
+    <div class="flex h-full w-1/4 min-w-72 flex-col gap-4 border-r border-zinc-700 bg-zinc-900 p-4 text-zinc-200">
       <div>
         <p class="text-xs uppercase tracking-wide text-zinc-400">Connected Agent</p>
         <p class="mt-1 text-sm font-medium text-zinc-100">{activeAgentName()}</p>
       </div>
 
-      <label class="flex flex-col gap-1 text-xs uppercase tracking-wide text-zinc-400" for="agent-select">
-        Agent
-        <select
-          id="agent-select"
-          class="rounded border border-zinc-700 bg-zinc-800 px-2 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
-          value={activeAgentKey()}
-          onChange={(event) => setActiveAgentKey(event.currentTarget.value)}
-        >
-          {agents().map((agent) => (
-            <option value={agent.key}>{agent.name}</option>
-          ))}
-        </select>
-      </label>
+      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+        <p class="text-xs uppercase tracking-wide text-zinc-400">Available Agents</p>
+        {agents().map((agent) => (
+          <AgentCard
+            agent={agent}
+            isActive={agent.key === activeAgentKey()}
+            onSelect={(agentKey) => setActiveAgentKey(agentKey)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

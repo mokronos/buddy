@@ -2,7 +2,6 @@ import asyncio
 from uuid import uuid4
 
 import anyio
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
@@ -17,22 +16,30 @@ from pydantic_ai import (
     PartEndEvent,
     PartStartEvent,
     RetryPromptPart,
-    ThinkingPart,
-    ThinkingPartDelta,
     TextPart,
     TextPartDelta,
+    ThinkingPart,
+    ThinkingPartDelta,
     ToolCallPart,
     ToolReturnPart,
 )
 
 from buddy.a2a.utils import simple_data_part, simple_text_part
+from buddy.agent.deps import AgentDeps
+from buddy.environment.manager import EnvironmentManager
 from buddy.session_store import SessionStore
 
 
 class PyAIAgentExecutor(AgentExecutor):
-    def __init__(self, agent: Agent, session_store: SessionStore) -> None:
+    def __init__(
+        self,
+        agent: Agent,
+        session_store: SessionStore,
+        environment_manager: EnvironmentManager,
+    ) -> None:
         self.agent = agent
         self.session_store = session_store
+        self.environment_manager = environment_manager
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         query = context.get_user_input()
@@ -104,10 +111,15 @@ class PyAIAgentExecutor(AgentExecutor):
 
             async def run_agent():
                 async with send_stream:
+                    deps = AgentDeps(
+                        session_id=context_id,
+                        environment_manager=self.environment_manager,
+                    )
                     return await self.agent.run(
                         query,
                         message_history=msg_history,
                         event_stream_handler=event_stream_handler,
+                        deps=deps,
                     )
 
             run_task = asyncio.create_task(run_agent())

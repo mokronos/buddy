@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic_ai import Agent
 
 from buddy.a2a.executor import PyAIAgentExecutor
+from buddy.environment.manager import EnvironmentManager
 from buddy.session_store import SessionStore
 
 load_dotenv()
@@ -27,6 +28,22 @@ if base_url.endswith("/a2a"):
 
 
 session_store = SessionStore(Path("sessions.db"))
+
+
+def _int_env(name: str, default: int) -> int:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    try:
+        return int(raw_value)
+    except ValueError:
+        return default
+
+
+environment_manager = EnvironmentManager(
+    image_ref=os.environ.get("BUDDY_ENV_IMAGE", "environ:latest"),
+    warm_containers=_int_env("BUDDY_ENV_WARM_CONTAINERS", 1),
+)
 
 
 def _create_agent_card(name: str, url: str) -> AgentCard:
@@ -44,9 +61,18 @@ def _create_agent_card(name: str, url: str) -> AgentCard:
     )
 
 
-def _create_a2a_sub_app(agent: Agent, card_name: str, card_url: str) -> FastAPI:
+def _create_a2a_sub_app(
+    agent: Agent,
+    card_name: str,
+    card_url: str,
+    manager: EnvironmentManager,
+) -> FastAPI:
     request_handler = DefaultRequestHandler(
-        agent_executor=PyAIAgentExecutor(agent=agent, session_store=session_store),
+        agent_executor=PyAIAgentExecutor(
+            agent=agent,
+            session_store=session_store,
+            environment_manager=manager,
+        ),
         task_store=InMemoryTaskStore(),
     )
 
@@ -65,11 +91,24 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
     app = FastAPI()
     agent_index: list[dict[str, str]] = []
 
+    @app.on_event("startup")
+    async def _startup() -> None:
+        environment_manager.start()
+
+    @app.on_event("shutdown")
+    async def _shutdown() -> None:
+        environment_manager.stop()
+
     for agent_key, agent in agents.items():
         mount_path = f"/a2a/{agent_key}"
         card_url = f"{base_url}{mount_path}"
         card_name = agent.name or f"buddy-{agent_key}"
-        sub_app = _create_a2a_sub_app(agent=agent, card_name=card_name, card_url=card_url)
+        sub_app = _create_a2a_sub_app(
+            agent=agent,
+            card_name=card_name,
+            card_url=card_url,
+            manager=environment_manager,
+        )
         app.mount(mount_path, sub_app)
         agent_index.append({
             "key": agent_key,

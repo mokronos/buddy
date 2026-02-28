@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any, cast
 from uuid import uuid4
 
 import anyio
@@ -26,7 +27,7 @@ from pydantic_ai import (
 
 from buddy.a2a.utils import simple_data_part, simple_text_part
 from buddy.agent.deps import AgentDeps
-from buddy.environment.manager import EnvironmentManager
+from buddy.environment.runtime import EnvironmentRuntime
 from buddy.session_store import SessionStore
 
 
@@ -35,7 +36,7 @@ class PyAIAgentExecutor(AgentExecutor):
         self,
         agent: Agent,
         session_store: SessionStore,
-        environment_manager: EnvironmentManager,
+        environment_manager: EnvironmentRuntime,
     ) -> None:
         self.agent = agent
         self.session_store = session_store
@@ -115,7 +116,8 @@ class PyAIAgentExecutor(AgentExecutor):
                         session_id=context_id,
                         environment_manager=self.environment_manager,
                     )
-                    return await self.agent.run(
+                    agent_with_deps = cast(Any, self.agent)
+                    return await agent_with_deps.run(
                         query,
                         message_history=msg_history,
                         event_stream_handler=event_stream_handler,

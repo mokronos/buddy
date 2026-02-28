@@ -11,18 +11,13 @@ import docker
 from docker.errors import ImageNotFound, NotFound
 from docker.models.containers import Container
 
+from buddy.environment.runtime import ExecResult
+
 
 @dataclass
 class EnvironmentLease:
     owner_id: str
     container_id: str
-
-
-@dataclass
-class ExecResult:
-    exit_code: int
-    stdout: str
-    stderr: str
 
 
 class EnvironmentManager:
@@ -50,7 +45,7 @@ class EnvironmentManager:
             missing = max(0, self.warm_containers - len(self._idle))
             for _ in range(missing):
                 container = self._create_container()
-                self._idle.append(container.id)
+                self._idle.append(self._container_id(container))
 
     def stop(self) -> None:
         with self._lock:
@@ -71,12 +66,14 @@ class EnvironmentManager:
             leased_container_id = self._leases.get(owner_id)
             if leased_container_id:
                 container = self._ensure_running(leased_container_id)
-                self._leases[owner_id] = container.id
-                return EnvironmentLease(owner_id=owner_id, container_id=container.id)
+                container_id = self._container_id(container)
+                self._leases[owner_id] = container_id
+                return EnvironmentLease(owner_id=owner_id, container_id=container_id)
 
             container = self._acquire_idle_container()
-            self._leases[owner_id] = container.id
-            return EnvironmentLease(owner_id=owner_id, container_id=container.id)
+            container_id = self._container_id(container)
+            self._leases[owner_id] = container_id
+            return EnvironmentLease(owner_id=owner_id, container_id=container_id)
 
     def release(self, owner_id: str, reusable: bool = True) -> None:
         with self._lock:
@@ -86,7 +83,7 @@ class EnvironmentManager:
 
             if reusable:
                 container = self._ensure_running(container_id)
-                self._idle.append(container.id)
+                self._idle.append(self._container_id(container))
                 return
 
         try:
@@ -226,3 +223,10 @@ class EnvironmentManager:
             raise ValueError("path traversal is not allowed")
 
         return posixpath.normpath(f"{self.workspace_dir}/{normalized}")
+
+    @staticmethod
+    def _container_id(container: Container) -> str:
+        container_id = container.id
+        if container_id is None:
+            raise RuntimeError("Container id is missing")
+        return container_id

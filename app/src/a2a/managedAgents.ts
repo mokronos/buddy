@@ -49,13 +49,13 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function listManagedAgents(): Promise<ManagedAgent[]> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/managed-agents`);
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed`);
   const payload = await readJson<ListManagedAgentsResponse>(response);
   return payload.agents;
 }
 
 export async function createManagedAgent(input: ManagedAgentCreateInput): Promise<ManagedAgent> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/managed-agents`, {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -67,7 +67,7 @@ export async function createManagedAgent(input: ManagedAgentCreateInput): Promis
 }
 
 export async function startManagedAgent(agentId: string): Promise<ManagedAgent> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/managed-agents/${agentId}/start`, {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed/${agentId}/start`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -79,7 +79,7 @@ export async function startManagedAgent(agentId: string): Promise<ManagedAgent> 
 }
 
 export async function stopManagedAgent(agentId: string): Promise<ManagedAgent> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/managed-agents/${agentId}/stop`, {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed/${agentId}/stop`, {
     method: "POST",
   });
   const payload = await readJson<ManagedAgentResponse>(response);
@@ -87,14 +87,14 @@ export async function stopManagedAgent(agentId: string): Promise<ManagedAgent> {
 }
 
 export async function deleteManagedAgent(agentId: string): Promise<void> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/managed-agents/${agentId}?removeConfig=true`, {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed/${agentId}?removeConfig=true`, {
     method: "DELETE",
   });
   await readJson<{ ok: boolean }>(response);
 }
 
 export async function getManagedAgentLogs(agentId: string, tail: number = 200): Promise<ManagedAgentLogs> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/managed-agents/${agentId}/logs?tail=${tail}`);
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed/${agentId}/logs?tail=${tail}`);
   const payload = await readJson<ManagedAgentLogsResponse>(response);
   return payload;
 }

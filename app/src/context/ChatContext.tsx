@@ -3,7 +3,6 @@ import {
   createContext,
   createMemo,
   createSignal,
-  onMount,
   useContext,
   type Accessor,
   type JSX,
@@ -497,10 +496,6 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       return next;
     });
   };
-
-  onMount(() => {
-    void refreshAgents();
-  });
 
   const setActiveAgentKey = (agentKey: string): void => {
     const selectedAgent = agents().find((agent) => agent.key === agentKey);

@@ -36,13 +36,13 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function listExternalAgents(): Promise<ExternalAgent[]> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/external-agents`);
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/external`);
   const payload = await readJson<ListExternalAgentsResponse>(response);
   return payload.agents;
 }
 
 export async function createExternalAgent(input: ExternalAgentCreateInput): Promise<ExternalAgent> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/external-agents`, {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/external`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -54,7 +54,7 @@ export async function createExternalAgent(input: ExternalAgentCreateInput): Prom
 }
 
 export async function updateExternalAgent(agentId: string, input: ExternalAgentUpdateInput): Promise<ExternalAgent> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/external-agents/${agentId}`, {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/external/${agentId}`, {
     method: "PUT",
     headers: {
       "content-type": "application/json",
@@ -66,7 +66,7 @@ export async function updateExternalAgent(agentId: string, input: ExternalAgentU
 }
 
 export async function deleteExternalAgent(agentId: string): Promise<void> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/external-agents/${agentId}`, {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/external/${agentId}`, {
     method: "DELETE",
   });
   await readJson<{ ok: boolean }>(response);

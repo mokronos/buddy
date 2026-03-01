@@ -398,11 +398,13 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             "externalAgents": external_entries,
         })
 
+    @app.get("/agents/external")
     @app.get("/external-agents")
     async def list_external_agents() -> JSONResponse:
         records = [record.__dict__ for record in external_agent_manager.list_agents()]
         return JSONResponse({"agents": records})
 
+    @app.post("/agents/external")
     @app.post("/external-agents")
     async def create_external_agent(payload: ExternalAgentCreateRequest) -> JSONResponse:
         try:
@@ -425,6 +427,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             status_code=201,
         )
 
+    @app.put("/agents/external/{agent_id}")
     @app.put("/external-agents/{agent_id}")
     async def update_external_agent(agent_id: str, payload: ExternalAgentUpdateRequest) -> JSONResponse:
         try:
@@ -437,6 +440,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(error)) from error
         return JSONResponse({"agent": record.__dict__})
 
+    @app.delete("/agents/external/{agent_id}")
     @app.delete("/external-agents/{agent_id}")
     async def delete_external_agent(agent_id: str) -> JSONResponse:
         try:
@@ -445,6 +449,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(error)) from error
         return JSONResponse({"ok": True})
 
+    @app.get("/agents/managed")
     @app.get("/managed-agents")
     async def list_managed_agents() -> JSONResponse:
         if managed_agent_manager is None:
@@ -452,6 +457,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         agents_payload = [record.__dict__ for record in managed_agent_manager.list_agents()]
         return JSONResponse({"agents": agents_payload})
 
+    @app.get("/agents/managed/{agent_id}")
     @app.get("/managed-agents/{agent_id}")
     async def get_managed_agent(agent_id: str) -> JSONResponse:
         if managed_agent_manager is None:
@@ -461,6 +467,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Managed agent '{agent_id}' not found")
         return JSONResponse({"agent": record.__dict__})
 
+    @app.get("/agents/managed/{agent_id}/logs")
     @app.get("/managed-agents/{agent_id}/logs")
     async def get_managed_agent_logs(agent_id: str, tail: int = 200) -> JSONResponse:
         if managed_agent_manager is None:
@@ -477,6 +484,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             "logs": logs,
         })
 
+    @app.post("/agents/managed")
     @app.post("/managed-agents")
     async def create_managed_agent(payload: ManagedAgentCreateRequest) -> JSONResponse:
         if managed_agent_manager is None:
@@ -506,6 +514,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             status_code=201,
         )
 
+    @app.post("/agents/managed/{agent_id}/start")
     @app.post("/managed-agents/{agent_id}/start")
     async def start_managed_agent(agent_id: str, payload: ManagedAgentStartRequest) -> JSONResponse:
         if managed_agent_manager is None:
@@ -522,6 +531,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             raise HTTPException(status_code=500, detail=f"Failed to start agent: {error}") from error
         return JSONResponse({"agent": record.__dict__})
 
+    @app.post("/agents/managed/{agent_id}/stop")
     @app.post("/managed-agents/{agent_id}/stop")
     async def stop_managed_agent(agent_id: str) -> JSONResponse:
         if managed_agent_manager is None:
@@ -532,6 +542,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(error)) from error
         return JSONResponse({"agent": record.__dict__})
 
+    @app.delete("/agents/managed/{agent_id}")
     @app.delete("/managed-agents/{agent_id}")
     async def delete_managed_agent(agent_id: str, request: Request) -> JSONResponse:
         if managed_agent_manager is None:

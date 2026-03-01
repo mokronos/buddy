@@ -285,6 +285,7 @@ function upsertThinkingMessage(
 }
 
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
+  let refreshRequestId = 0;
   const [workspaces, setWorkspaces] = createSignal<Record<string, AgentWorkspaceState>>({
     buddy: createWorkspace(props.messages || []),
   });
@@ -383,7 +384,8 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
   };
 
   const refreshAgents = async (): Promise<void> => {
-    const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`);
+    const requestId = ++refreshRequestId;
+    const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Failed to fetch agents: HTTP ${response.status}`);
     }
@@ -438,47 +440,25 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       throw new Error("No agents returned from /agents");
     }
 
-    const loadedAgentsWithDetails = await Promise.all(
-      loadedAgents.map(async (agent) => {
-        try {
-          const cardResponse = await fetch(resolveAgentCardUrl(agent.agentCardPath));
-          if (!cardResponse.ok) {
-            return agent;
-          }
-
-          const cardPayload = (await cardResponse.json()) as unknown;
-          const details = readAgentCardDetails(cardPayload);
-          return {
-            ...agent,
-            description: details.description,
-            version: details.version,
-            skills: details.skills,
-          };
-        } catch {
-          return agent;
-        }
-      }),
-    );
-
-    setAgents(loadedAgentsWithDetails);
+    setAgents(loadedAgents);
 
     const currentActiveKey = activeAgentKey();
     const fallbackAgentKey =
       typeof payload.defaultAgentKey === "string" &&
-      loadedAgentsWithDetails.some((agent) => agent.key === payload.defaultAgentKey)
+      loadedAgents.some((agent) => agent.key === payload.defaultAgentKey)
         ? payload.defaultAgentKey
-        : loadedAgentsWithDetails[0].key;
-    const nextActiveKey = loadedAgentsWithDetails.some((agent) => agent.key === currentActiveKey)
+        : loadedAgents[0].key;
+    const nextActiveKey = loadedAgents.some((agent) => agent.key === currentActiveKey)
       ? currentActiveKey
       : fallbackAgentKey;
     const nextActiveAgent =
-      loadedAgentsWithDetails.find((agent) => agent.key === nextActiveKey) ?? loadedAgentsWithDetails[0];
+      loadedAgents.find((agent) => agent.key === nextActiveKey) ?? loadedAgents[0];
     setActiveAgentKeySignal(nextActiveAgent.key);
     setActiveAgentName(nextActiveAgent.name);
 
     setWorkspaces((current) => {
       const next = { ...current };
-      for (const agent of loadedAgentsWithDetails) {
+      for (const agent of loadedAgents) {
         if (!next[agent.key]) {
           next[agent.key] = createWorkspace();
         }
@@ -488,13 +468,43 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
     setActiveTaskIds((current) => {
       const next = { ...current };
-      for (const agent of loadedAgentsWithDetails) {
+      for (const agent of loadedAgents) {
         if (!next[agent.key]) {
           next[agent.key] = "task-1";
         }
       }
       return next;
     });
+
+    void (async () => {
+      const loadedAgentsWithDetails = await Promise.all(
+        loadedAgents.map(async (agent) => {
+          try {
+            const cardResponse = await fetch(resolveAgentCardUrl(agent.agentCardPath), { cache: "no-store" });
+            if (!cardResponse.ok) {
+              return agent;
+            }
+
+            const cardPayload = (await cardResponse.json()) as unknown;
+            const details = readAgentCardDetails(cardPayload);
+            return {
+              ...agent,
+              description: details.description,
+              version: details.version,
+              skills: details.skills,
+            };
+          } catch {
+            return agent;
+          }
+        }),
+      );
+
+      if (requestId !== refreshRequestId) {
+        return;
+      }
+
+      setAgents(loadedAgentsWithDetails);
+    })();
   };
 
   const setActiveAgentKey = (agentKey: string): void => {

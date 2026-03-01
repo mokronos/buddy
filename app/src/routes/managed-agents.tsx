@@ -15,6 +15,7 @@ import {
   type ManagedAgent,
 } from "~/a2a/managedAgents";
 import TopTabs from "~/components/TopTabs";
+import { useChat } from "~/context/ChatContext";
 
 const defaultConfigYaml = `agent:
   id: demo-agent
@@ -27,6 +28,7 @@ a2a:
 `;
 
 export default function ManagedAgentsPage() {
+  const { refreshAgents } = useChat();
   const [agents, setAgents] = createSignal<ManagedAgent[]>([]);
   const [externalAgents, setExternalAgents] = createSignal<ExternalAgent[]>([]);
   const [loading, setLoading] = createSignal(true);
@@ -96,6 +98,7 @@ export default function ManagedAgentsPage() {
       });
       setActionMessage(`Created agent '${trimmedAgentId}'`);
       await loadAgents();
+      await refreshAgents();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to create agent");
     } finally {
@@ -110,6 +113,7 @@ export default function ManagedAgentsPage() {
       await startManagedAgent(managedAgentId);
       setActionMessage(`Started agent '${managedAgentId}'`);
       await loadAgents();
+      await refreshAgents();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to start agent");
     }
@@ -122,6 +126,7 @@ export default function ManagedAgentsPage() {
       await stopManagedAgent(managedAgentId);
       setActionMessage(`Stopped agent '${managedAgentId}'`);
       await loadAgents();
+      await refreshAgents();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to stop agent");
     }
@@ -134,6 +139,7 @@ export default function ManagedAgentsPage() {
       await deleteManagedAgent(managedAgentId);
       setActionMessage(`Deleted agent '${managedAgentId}'`);
       await loadAgents();
+      await refreshAgents();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to delete agent");
     }
@@ -169,6 +175,7 @@ export default function ManagedAgentsPage() {
       setExternalAgentUrl("");
       setExternalUseLegacyCardPath(false);
       await loadAgents();
+      await refreshAgents();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to add external agent");
     } finally {
@@ -183,6 +190,7 @@ export default function ManagedAgentsPage() {
       await deleteExternalAgent(externalId);
       setActionMessage(`Deleted external agent '${externalId}'`);
       await loadAgents();
+      await refreshAgents();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to delete external agent");
     }
@@ -218,6 +226,7 @@ export default function ManagedAgentsPage() {
       setActionMessage(`Updated external agent '${agentId}'`);
       cancelEditExternalAgent();
       await loadAgents();
+      await refreshAgents();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to update external agent");
     } finally {

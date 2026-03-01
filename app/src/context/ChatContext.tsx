@@ -1,6 +1,7 @@
 import type { MessageSendParams } from "@a2a-js/sdk";
 import {
   createContext,
+  createMemo,
   createSignal,
   onMount,
   useContext,
@@ -24,7 +25,6 @@ export interface AgentEndpoint {
 
 interface ChatContextValue {
   messages: Accessor<Message[]>;
-  setMessages: Setter<Message[]>;
   sendMessage: (content: string) => Promise<void>;
   isSending: Accessor<boolean>;
   agents: Accessor<AgentEndpoint[]>;
@@ -110,6 +110,20 @@ interface AgentCardDetails {
   description: string | null;
   version: string | null;
   skills: string[];
+}
+
+interface AgentConversationState {
+  messages: Message[];
+  isSending: boolean;
+  contextId: string | null;
+}
+
+function emptyConversation(): AgentConversationState {
+  return {
+    messages: [],
+    isSending: false,
+    contextId: null,
+  };
 }
 
 function readStringValue(value: unknown): string | null {
@@ -236,12 +250,54 @@ function upsertThinkingMessage(
 }
 
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
-  const [messages, setMessages] = createSignal(props.messages || []);
-  const [isSending, setIsSending] = createSignal(false);
+  const [conversations, setConversations] = createSignal<Record<string, AgentConversationState>>({
+    buddy: {
+      messages: props.messages || [],
+      isSending: false,
+      contextId: null,
+    },
+  });
   const [agents, setAgents] = createSignal<AgentEndpoint[]>([]);
   const [activeAgentKey, setActiveAgentKeySignal] = createSignal("buddy");
   const [activeAgentName, setActiveAgentName] = createSignal("buddy");
-  const [conversationContextId, setConversationContextId] = createSignal<string | null>(null);
+
+  const messages = createMemo(() => {
+    const activeKey = activeAgentKey();
+    return conversations()[activeKey]?.messages ?? [];
+  });
+
+  const isSending = createMemo(() => {
+    const activeKey = activeAgentKey();
+    return conversations()[activeKey]?.isSending ?? false;
+  });
+
+  const updateConversation = (
+    agentKey: string,
+    updater: (current: AgentConversationState) => AgentConversationState,
+  ): AgentConversationState => {
+    let nextValue = emptyConversation();
+    setConversations((current) => {
+      const existing = current[agentKey] ?? emptyConversation();
+      nextValue = updater(existing);
+      return {
+        ...current,
+        [agentKey]: nextValue,
+      };
+    });
+    return nextValue;
+  };
+
+  const setMessages: Setter<Message[]> = (value) => {
+    const activeKey = activeAgentKey();
+    const updated = updateConversation(activeKey, (current) => {
+      const nextMessages = typeof value === "function" ? value(current.messages) : value;
+      return {
+        ...current,
+        messages: nextMessages,
+      };
+    });
+    return updated.messages;
+  };
 
   onMount(async () => {
     const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`);
@@ -333,6 +389,16 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       loadedAgentsWithDetails.find((agent) => agent.key === defaultAgentKey) ?? loadedAgentsWithDetails[0];
     setActiveAgentKeySignal(defaultAgent.key);
     setActiveAgentName(defaultAgent.name);
+
+    setConversations((current) => {
+      const next = { ...current };
+      for (const agent of loadedAgentsWithDetails) {
+        if (!next[agent.key]) {
+          next[agent.key] = emptyConversation();
+        }
+      }
+      return next;
+    });
   });
 
   const setActiveAgentKey = (agentKey: string): void => {
@@ -345,10 +411,29 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
   };
 
   const sendMessage = async (content: string): Promise<void> => {
-    const activeContextId = conversationContextId() ?? crypto.randomUUID();
-    if (conversationContextId() === null) {
-      setConversationContextId(activeContextId);
-    }
+    const targetAgentKey = activeAgentKey();
+    const activeContextId = (conversations()[targetAgentKey]?.contextId ?? null) ?? crypto.randomUUID();
+
+    updateConversation(targetAgentKey, (current) => {
+      if (current.contextId) {
+        return current;
+      }
+      return {
+        ...current,
+        contextId: activeContextId,
+      };
+    });
+
+    const setAgentMessages: Setter<Message[]> = (value) => {
+      const updated = updateConversation(targetAgentKey, (current) => {
+        const nextMessages = typeof value === "function" ? value(current.messages) : value;
+        return {
+          ...current,
+          messages: nextMessages,
+        };
+      });
+      return updated.messages;
+    };
 
     const humanMessage: Message = {
       id: crypto.randomUUID(),
@@ -357,8 +442,12 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       timestamp: timestamp(),
     };
 
-    setMessages((current) => [...current, humanMessage]);
-    setIsSending(true);
+    setAgentMessages((current) => [...current, humanMessage]);
+    updateConversation(targetAgentKey, (current) => ({
+      ...current,
+      isSending: true,
+      contextId: current.contextId ?? activeContextId,
+    }));
 
     const assistantMessageId = crypto.randomUUID();
     const assistantTimestamp = timestamp();
@@ -373,12 +462,12 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       }
 
       streamedText = `${streamedText}${chunk}`;
-      upsertAIMessage(setMessages, assistantMessageId, streamedText, assistantTimestamp);
+      upsertAIMessage(setAgentMessages, assistantMessageId, streamedText, assistantTimestamp);
     };
 
     const setAssistantText = (text: string): void => {
       streamedText = text;
-      upsertAIMessage(setMessages, assistantMessageId, streamedText, assistantTimestamp);
+      upsertAIMessage(setAgentMessages, assistantMessageId, streamedText, assistantTimestamp);
     };
 
     const appendThinkingChunk = (chunk: string): void => {
@@ -392,7 +481,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       }
 
       streamedThinking = `${streamedThinking}${chunk}`;
-      upsertThinkingMessage(setMessages, thinkingMessageId, streamedThinking, thinkingTimestamp);
+      upsertThinkingMessage(setAgentMessages, thinkingMessageId, streamedThinking, thinkingTimestamp);
     };
 
     const setThinkingText = (text: string): void => {
@@ -402,7 +491,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       }
 
       streamedThinking = text;
-      upsertThinkingMessage(setMessages, thinkingMessageId, streamedThinking, thinkingTimestamp);
+      upsertThinkingMessage(setAgentMessages, thinkingMessageId, streamedThinking, thinkingTimestamp);
     };
 
     const startNewThinkingBlock = (): void => {
@@ -418,7 +507,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     };
 
     try {
-      const selectedAgent = agents().find((agent) => agent.key === activeAgentKey());
+      const selectedAgent = agents().find((agent) => agent.key === targetAgentKey);
       const agentCardPath = selectedAgent?.agentCardPath ?? "/a2a/buddy/.well-known/agent-card.json";
       const a2aClient = createA2AClient({
         agentCardPath,
@@ -503,7 +592,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
               timestamp: timestamp(),
             };
 
-            setMessages((current) => [...current, toolCallMessage]);
+            setAgentMessages((current) => [...current, toolCallMessage]);
             return;
           }
 
@@ -521,7 +610,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
             timestamp: timestamp(),
           };
 
-          setMessages((current) => [...current, toolMessage]);
+           setAgentMessages((current) => [...current, toolMessage]);
         }
       });
 
@@ -540,10 +629,13 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
         timestamp: timestamp(),
       };
 
-      setMessages((current) => [...current, errorMessage]);
+      setAgentMessages((current) => [...current, errorMessage]);
       throw error;
     } finally {
-      setIsSending(false);
+      updateConversation(targetAgentKey, (current) => ({
+        ...current,
+        isSending: false,
+      }));
     }
   };
 
@@ -551,7 +643,6 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     <ChatContext.Provider
       value={{
         messages,
-        setMessages,
         sendMessage,
         isSending,
         agents,

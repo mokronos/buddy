@@ -1,4 +1,5 @@
-import { For, createSignal, onMount } from "solid-js";
+import { useMutation, useQuery } from "@tanstack/solid-query";
+import { For, createSignal } from "solid-js";
 import {
   createExternalAgent,
   deleteExternalAgent,
@@ -29,13 +30,17 @@ a2a:
 
 export default function ManagedAgentsPage() {
   const { refreshAgents } = useChat();
-  const [agents, setAgents] = createSignal<ManagedAgent[]>([]);
-  const [externalAgents, setExternalAgents] = createSignal<ExternalAgent[]>([]);
-  const [loading, setLoading] = createSignal(true);
+  const managedAgentsQuery = useQuery(() => ({
+    queryKey: ["agents", "managed"],
+    queryFn: listManagedAgents,
+  }));
+  const externalAgentsQuery = useQuery(() => ({
+    queryKey: ["agents", "external"],
+    queryFn: listExternalAgents,
+  }));
+
   const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
   const [actionMessage, setActionMessage] = createSignal<string | null>(null);
-  const [isCreating, setIsCreating] = createSignal(false);
-  const [isAddingExternal, setIsAddingExternal] = createSignal(false);
 
   const [agentId, setAgentId] = createSignal("");
   const [image, setImage] = createSignal("buddy-agent-runtime:latest");
@@ -48,48 +53,56 @@ export default function ManagedAgentsPage() {
   const [editingExternalAgentId, setEditingExternalAgentId] = createSignal<string | null>(null);
   const [editingExternalAgentUrl, setEditingExternalAgentUrl] = createSignal("");
   const [editingExternalUseLegacyCardPath, setEditingExternalUseLegacyCardPath] = createSignal(false);
-  const [isSavingExternalEdit, setIsSavingExternalEdit] = createSignal(false);
-
-  const loadAgents = async (): Promise<void> => {
-    setLoading(true);
-    setErrorMessage(null);
-    try {
-      const [managed, external] = await Promise.all([listManagedAgents(), listExternalAgents()]);
-      setAgents(managed);
-      setExternalAgents(external);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to load managed agents");
-    } finally {
-      setLoading(false);
-    }
+  const syncAgentQueries = async (): Promise<void> => {
+    await Promise.all([managedAgentsQuery.refetch(), externalAgentsQuery.refetch()]);
+    await refreshAgents();
   };
 
-  onMount(async () => {
-    await loadAgents();
-  });
+  const createManagedMutation = useMutation(() => ({ mutationFn: createManagedAgent }));
+  const startManagedMutation = useMutation(() => ({ mutationFn: startManagedAgent }));
+  const stopManagedMutation = useMutation(() => ({ mutationFn: stopManagedAgent }));
+  const deleteManagedMutation = useMutation(() => ({ mutationFn: deleteManagedAgent }));
+  const createExternalMutation = useMutation(() => ({ mutationFn: createExternalAgent }));
+  const deleteExternalMutation = useMutation(() => ({ mutationFn: deleteExternalAgent }));
+  const updateExternalMutation = useMutation(() => ({
+    mutationFn: (variables: { agentId: string; base_url: string; use_legacy_card_path: boolean }) =>
+      updateExternalAgent(variables.agentId, {
+        base_url: variables.base_url,
+        use_legacy_card_path: variables.use_legacy_card_path,
+      }),
+  }));
+  const isLoadingAgents = () => managedAgentsQuery.isPending || externalAgentsQuery.isPending;
+  const managedAgents = () => managedAgentsQuery.data ?? [];
+  const externalAgents = () => externalAgentsQuery.data ?? [];
+  const queryErrorMessage = () => {
+    if (managedAgentsQuery.isError) {
+      return managedAgentsQuery.error instanceof Error ? managedAgentsQuery.error.message : "Failed to load managed agents";
+    }
+    if (externalAgentsQuery.isError) {
+      return externalAgentsQuery.error instanceof Error ? externalAgentsQuery.error.message : "Failed to load external agents";
+    }
+    return null;
+  };
 
   const createAgent = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
     setActionMessage(null);
     setErrorMessage(null);
-    setIsCreating(true);
 
     const trimmedAgentId = agentId().trim();
     if (trimmedAgentId.length === 0) {
       setErrorMessage("Agent id is required");
-      setIsCreating(false);
       return;
     }
 
     const parsedContainerPort = Number.parseInt(containerPort(), 10);
     if (!Number.isFinite(parsedContainerPort) || parsedContainerPort <= 0) {
       setErrorMessage("Container port must be a positive number");
-      setIsCreating(false);
       return;
     }
 
     try {
-      await createManagedAgent({
+      await createManagedMutation.mutateAsync({
         agent_id: trimmedAgentId,
         image: image().trim(),
         config_yaml: configYaml(),
@@ -97,12 +110,9 @@ export default function ManagedAgentsPage() {
         config_mount_path: configMountPath().trim(),
       });
       setActionMessage(`Created agent '${trimmedAgentId}'`);
-      await loadAgents();
-      await refreshAgents();
+      await syncAgentQueries();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to create agent");
-    } finally {
-      setIsCreating(false);
     }
   };
 
@@ -110,10 +120,9 @@ export default function ManagedAgentsPage() {
     setActionMessage(null);
     setErrorMessage(null);
     try {
-      await startManagedAgent(managedAgentId);
+      await startManagedMutation.mutateAsync(managedAgentId);
       setActionMessage(`Started agent '${managedAgentId}'`);
-      await loadAgents();
-      await refreshAgents();
+      await syncAgentQueries();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to start agent");
     }
@@ -123,10 +132,9 @@ export default function ManagedAgentsPage() {
     setActionMessage(null);
     setErrorMessage(null);
     try {
-      await stopManagedAgent(managedAgentId);
+      await stopManagedMutation.mutateAsync(managedAgentId);
       setActionMessage(`Stopped agent '${managedAgentId}'`);
-      await loadAgents();
-      await refreshAgents();
+      await syncAgentQueries();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to stop agent");
     }
@@ -136,10 +144,9 @@ export default function ManagedAgentsPage() {
     setActionMessage(null);
     setErrorMessage(null);
     try {
-      await deleteManagedAgent(managedAgentId);
+      await deleteManagedMutation.mutateAsync(managedAgentId);
       setActionMessage(`Deleted agent '${managedAgentId}'`);
-      await loadAgents();
-      await refreshAgents();
+      await syncAgentQueries();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to delete agent");
     }
@@ -149,23 +156,20 @@ export default function ManagedAgentsPage() {
     event.preventDefault();
     setActionMessage(null);
     setErrorMessage(null);
-    setIsAddingExternal(true);
 
     const trimmedAgentId = externalAgentId().trim();
     const trimmedAgentUrl = externalAgentUrl().trim();
     if (trimmedAgentId.length === 0) {
       setErrorMessage("External agent id is required");
-      setIsAddingExternal(false);
       return;
     }
     if (trimmedAgentUrl.length === 0) {
       setErrorMessage("External agent URL is required");
-      setIsAddingExternal(false);
       return;
     }
 
     try {
-      await createExternalAgent({
+      await createExternalMutation.mutateAsync({
         agent_id: trimmedAgentId,
         base_url: trimmedAgentUrl,
         use_legacy_card_path: externalUseLegacyCardPath(),
@@ -174,12 +178,9 @@ export default function ManagedAgentsPage() {
       setExternalAgentId("");
       setExternalAgentUrl("");
       setExternalUseLegacyCardPath(false);
-      await loadAgents();
-      await refreshAgents();
+      await syncAgentQueries();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to add external agent");
-    } finally {
-      setIsAddingExternal(false);
     }
   };
 
@@ -187,10 +188,9 @@ export default function ManagedAgentsPage() {
     setActionMessage(null);
     setErrorMessage(null);
     try {
-      await deleteExternalAgent(externalId);
+      await deleteExternalMutation.mutateAsync(externalId);
       setActionMessage(`Deleted external agent '${externalId}'`);
-      await loadAgents();
-      await refreshAgents();
+      await syncAgentQueries();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to delete external agent");
     }
@@ -211,26 +211,22 @@ export default function ManagedAgentsPage() {
   const saveExternalAgentEdit = async (agentId: string): Promise<void> => {
     setActionMessage(null);
     setErrorMessage(null);
-    setIsSavingExternalEdit(true);
     const trimmedUrl = editingExternalAgentUrl().trim();
     if (trimmedUrl.length === 0) {
       setErrorMessage("External agent URL is required");
-      setIsSavingExternalEdit(false);
       return;
     }
     try {
-      await updateExternalAgent(agentId, {
+      await updateExternalMutation.mutateAsync({
+        agentId,
         base_url: trimmedUrl,
         use_legacy_card_path: editingExternalUseLegacyCardPath(),
       });
       setActionMessage(`Updated external agent '${agentId}'`);
       cancelEditExternalAgent();
-      await loadAgents();
-      await refreshAgents();
+      await syncAgentQueries();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to update external agent");
-    } finally {
-      setIsSavingExternalEdit(false);
     }
   };
 
@@ -282,10 +278,10 @@ export default function ManagedAgentsPage() {
               />
               <button
                 type="submit"
-                disabled={isCreating()}
+                disabled={createManagedMutation.isPending}
                 class="inline-flex w-fit items-center gap-2 rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {isCreating() ? (
+                {createManagedMutation.isPending ? (
                   <>
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent" />
                     Creating...
@@ -325,10 +321,10 @@ export default function ManagedAgentsPage() {
               </label>
               <button
                 type="submit"
-                disabled={isAddingExternal()}
+                disabled={createExternalMutation.isPending}
                 class="inline-flex w-fit items-center gap-2 rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {isAddingExternal() ? (
+                {createExternalMutation.isPending ? (
                   <>
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent" />
                     Adding...
@@ -346,20 +342,22 @@ export default function ManagedAgentsPage() {
               <button
                 type="button"
                 class="rounded-md border border-zinc-700 px-3 py-1 text-sm hover:border-zinc-400"
-                onClick={() => void loadAgents()}
+                onClick={() => {
+                  void syncAgentQueries();
+                }}
               >
                 Refresh
               </button>
             </div>
 
-            {loading() ? <p class="text-zinc-400">Loading...</p> : null}
-            {errorMessage() ? (
-              <p class="mb-3 rounded-md bg-red-900/30 p-2 text-sm text-red-300">{errorMessage()}</p>
+            {isLoadingAgents() ? <p class="text-zinc-400">Loading...</p> : null}
+            {errorMessage() || queryErrorMessage() ? (
+              <p class="mb-3 rounded-md bg-red-900/30 p-2 text-sm text-red-300">{errorMessage() ?? queryErrorMessage()}</p>
             ) : null}
             {actionMessage() ? (
               <p class="mb-3 rounded-md bg-emerald-900/30 p-2 text-sm text-emerald-300">{actionMessage()}</p>
             ) : null}
-            {isCreating() ? (
+            {createManagedMutation.isPending ? (
               <p class="mb-3 inline-flex items-center gap-2 rounded-md bg-zinc-800 p-2 text-sm text-zinc-200">
                 <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-200 border-t-transparent" />
                 Starting managed agent container and waiting for readiness...
@@ -367,7 +365,7 @@ export default function ManagedAgentsPage() {
             ) : null}
 
             <div class="grid gap-3">
-              <For each={agents()}>
+              <For each={managedAgents()}>
                 {(agent) => (
                   <article class="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
@@ -411,7 +409,9 @@ export default function ManagedAgentsPage() {
                   </article>
                 )}
               </For>
-              {agents().length === 0 && !loading() ? <p class="text-sm text-zinc-400">No managed agents yet.</p> : null}
+              {managedAgents().length === 0 && !isLoadingAgents() ? (
+                <p class="text-sm text-zinc-400">No managed agents yet.</p>
+              ) : null}
             </div>
           </section>
 
@@ -454,7 +454,7 @@ export default function ManagedAgentsPage() {
                         <div class="flex flex-wrap gap-2">
                           <button
                             type="button"
-                            disabled={isSavingExternalEdit()}
+                            disabled={updateExternalMutation.isPending}
                             class="rounded-md border border-zinc-600 px-3 py-1 text-xs text-zinc-100 hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-70"
                             onClick={() => void saveExternalAgentEdit(externalAgent.agent_id)}
                           >

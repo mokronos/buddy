@@ -1,5 +1,7 @@
 import type { MessageSendParams } from "@a2a-js/sdk";
+import { useQuery, useQueryClient } from "@tanstack/solid-query";
 import {
+  createEffect,
   createContext,
   createMemo,
   createSignal,
@@ -222,6 +224,92 @@ function resolveAgentCardUrl(agentCardPath: string): string {
   return `${DEFAULT_A2A_BASE_URL}/${agentCardPath}`;
 }
 
+interface AgentsIndexPayload {
+  defaultAgentKey: string | null;
+  agents: AgentEndpoint[];
+}
+
+async function fetchAgentsIndex(): Promise<AgentsIndexPayload> {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch agents: HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    defaultAgentKey?: unknown;
+    agents?: unknown;
+  };
+
+  if (!Array.isArray(payload.agents)) {
+    throw new Error("Invalid /agents response: missing agents array");
+  }
+
+  const agents = payload.agents
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const candidate = entry as {
+        key?: unknown;
+        name?: unknown;
+        mountPath?: unknown;
+        agentCardPath?: unknown;
+        url?: unknown;
+      };
+
+      if (
+        typeof candidate.key !== "string" ||
+        typeof candidate.name !== "string" ||
+        typeof candidate.mountPath !== "string" ||
+        typeof candidate.agentCardPath !== "string" ||
+        typeof candidate.url !== "string"
+      ) {
+        return null;
+      }
+
+      return {
+        key: candidate.key,
+        name: candidate.name,
+        mountPath: candidate.mountPath,
+        agentCardPath: candidate.agentCardPath,
+        url: candidate.url,
+        description: null,
+        version: null,
+        skills: [],
+      } as AgentEndpoint;
+    })
+    .filter((entry): entry is AgentEndpoint => entry !== null);
+
+  if (agents.length === 0) {
+    throw new Error("No agents returned from /agents");
+  }
+
+  const defaultAgentKey =
+    typeof payload.defaultAgentKey === "string" && agents.some((agent) => agent.key === payload.defaultAgentKey)
+      ? payload.defaultAgentKey
+      : null;
+
+  return {
+    defaultAgentKey,
+    agents,
+  };
+}
+
+async function fetchAgentCardDetails(agentCardPath: string): Promise<AgentCardDetails> {
+  const cardResponse = await fetch(resolveAgentCardUrl(agentCardPath), { cache: "no-store" });
+  if (!cardResponse.ok) {
+    return {
+      description: null,
+      version: null,
+      skills: [],
+    };
+  }
+
+  const cardPayload = (await cardResponse.json()) as unknown;
+  return readAgentCardDetails(cardPayload);
+}
+
 function upsertAIMessage(
   setMessages: Setter<Message[]>,
   id: string,
@@ -383,69 +471,35 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     return nextTask;
   };
 
+  const queryClient = useQueryClient();
+  const agentsIndexQuery = useQuery(() => ({
+    queryKey: ["agents", "index"],
+    queryFn: fetchAgentsIndex,
+    enabled: false,
+  }));
+
   const refreshAgents = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: ["agents"] });
+    const result = await agentsIndexQuery.refetch();
+    if (result.error) {
+      throw result.error;
+    }
+  };
+
+  createEffect(() => {
+    const payload = agentsIndexQuery.data;
+    if (!payload) {
+      return;
+    }
+
     const requestId = ++refreshRequestId;
-    const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch agents: HTTP ${response.status}`);
-    }
-
-    const payload = (await response.json()) as {
-      defaultAgentKey?: unknown;
-      agents?: unknown;
-    };
-
-    if (!Array.isArray(payload.agents)) {
-      throw new Error("Invalid /agents response: missing agents array");
-    }
-
-    const loadedAgents = payload.agents
-      .map((entry) => {
-        if (!entry || typeof entry !== "object") {
-          return null;
-        }
-
-        const candidate = entry as {
-          key?: unknown;
-          name?: unknown;
-          mountPath?: unknown;
-          agentCardPath?: unknown;
-          url?: unknown;
-        };
-
-        if (
-          typeof candidate.key !== "string" ||
-          typeof candidate.name !== "string" ||
-          typeof candidate.mountPath !== "string" ||
-          typeof candidate.agentCardPath !== "string" ||
-          typeof candidate.url !== "string"
-        ) {
-          return null;
-        }
-
-        return {
-          key: candidate.key,
-          name: candidate.name,
-          mountPath: candidate.mountPath,
-          agentCardPath: candidate.agentCardPath,
-          url: candidate.url,
-          description: null,
-          version: null,
-          skills: [],
-        } as AgentEndpoint;
-      })
-      .filter((entry): entry is AgentEndpoint => entry !== null);
-
-    if (loadedAgents.length === 0) {
-      throw new Error("No agents returned from /agents");
-    }
+    const loadedAgents = payload.agents;
 
     setAgents(loadedAgents);
 
     const currentActiveKey = activeAgentKey();
     const fallbackAgentKey =
-      typeof payload.defaultAgentKey === "string" &&
-      loadedAgents.some((agent) => agent.key === payload.defaultAgentKey)
+      typeof payload.defaultAgentKey === "string" && loadedAgents.some((agent) => agent.key === payload.defaultAgentKey)
         ? payload.defaultAgentKey
         : loadedAgents[0].key;
     const nextActiveKey = loadedAgents.some((agent) => agent.key === currentActiveKey)
@@ -480,13 +534,10 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       const loadedAgentsWithDetails = await Promise.all(
         loadedAgents.map(async (agent) => {
           try {
-            const cardResponse = await fetch(resolveAgentCardUrl(agent.agentCardPath), { cache: "no-store" });
-            if (!cardResponse.ok) {
-              return agent;
-            }
-
-            const cardPayload = (await cardResponse.json()) as unknown;
-            const details = readAgentCardDetails(cardPayload);
+            const details = await queryClient.fetchQuery({
+              queryKey: ["agents", "card", agent.agentCardPath],
+              queryFn: () => fetchAgentCardDetails(agent.agentCardPath),
+            });
             return {
               ...agent,
               description: details.description,
@@ -505,7 +556,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
       setAgents(loadedAgentsWithDetails);
     })();
-  };
+  });
 
   const setActiveAgentKey = (agentKey: string): void => {
     const selectedAgent = agents().find((agent) => agent.key === agentKey);

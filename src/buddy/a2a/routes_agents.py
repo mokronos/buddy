@@ -1,0 +1,281 @@
+import os
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
+
+from buddy.a2a.server_state import ServerState
+from buddy.a2a.validation import validate_agent_id
+
+
+class ManagedAgentCreateRequest(BaseModel):
+    agent_id: str = Field(min_length=1, max_length=63)
+    image: str = "buddy-agent-runtime:latest"
+    config_yaml: str
+    container_port: int = 10001
+    config_mount_path: str = "/etc/buddy/agent.yaml"
+    env: dict[str, str] = Field(default_factory=dict)
+    command: list[str] | None = None
+
+
+class ManagedAgentStartRequest(BaseModel):
+    env: dict[str, str] = Field(default_factory=dict)
+    command: list[str] | None = None
+
+
+class ManagedAgentConfigUpdateRequest(BaseModel):
+    config_yaml: str
+    restart: bool = True
+
+
+class ExternalAgentCreateRequest(BaseModel):
+    agent_id: str = Field(min_length=1, max_length=63)
+    base_url: str
+    use_legacy_card_path: bool = False
+
+
+class ExternalAgentUpdateRequest(BaseModel):
+    base_url: str
+    use_legacy_card_path: bool = False
+
+
+def build_agents_router(state: ServerState) -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/agents")
+    @router.get("/api/v1/agents")
+    async def list_agents() -> JSONResponse:
+        managed_entries = []
+        if state.managed_agent_manager is not None:
+            managed_records = await run_in_threadpool(state.managed_agent_manager.list_agents)
+            managed_entries = [state.build_managed_entry(record.agent_id, record.status) for record in managed_records]
+
+        external_records = await run_in_threadpool(state.external_agent_manager.list_agents)
+        external_entries = [state.build_external_entry(record.agent_id) for record in external_records]
+        all_entries = [*state.agent_index, *managed_entries, *external_entries]
+
+        default_key = state.default_agent_key
+        managed_default_key = next(
+            (
+                entry["key"]
+                for entry in managed_entries
+                if entry.get("name") == os.environ.get("BUDDY_DEFAULT_MANAGED_AGENT_ID", "buddy")
+            ),
+            None,
+        )
+        if managed_default_key is not None:
+            default_key = managed_default_key
+        if default_key is None and all_entries:
+            default_key = all_entries[0]["key"]
+
+        return JSONResponse({
+            "defaultAgentKey": default_key,
+            "agents": all_entries,
+            "managedAgents": managed_entries,
+            "externalAgents": external_entries,
+        })
+
+    @router.get("/agents/external")
+    @router.get("/api/v1/agents/external")
+    async def list_external_agents() -> JSONResponse:
+        records = await run_in_threadpool(state.external_agent_manager.list_agents)
+        return JSONResponse({"agents": [record.__dict__ for record in records]})
+
+    @router.post("/agents/external")
+    @router.post("/api/v1/agents/external")
+    async def create_external_agent(payload: ExternalAgentCreateRequest) -> JSONResponse:
+        try:
+            normalized_agent_id = validate_agent_id(payload.agent_id)
+            record = await run_in_threadpool(
+                state.external_agent_manager.create_agent,
+                agent_id=normalized_agent_id,
+                base_url=payload.base_url,
+                use_legacy_card_path=payload.use_legacy_card_path,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        mount_path = f"/a2a/external/{record.agent_id}"
+        card_file = "agent.json" if record.use_legacy_card_path else "agent-card.json"
+        return JSONResponse(
+            {
+                "agent": record.__dict__,
+                "proxyBaseUrl": f"{state.base_url}{mount_path}",
+                "agentCardUrl": f"{state.base_url}{mount_path}/.well-known/{card_file}",
+            },
+            status_code=201,
+        )
+
+    @router.put("/agents/external/{agent_id}")
+    @router.put("/api/v1/agents/external/{agent_id}")
+    async def update_external_agent(agent_id: str, payload: ExternalAgentUpdateRequest) -> JSONResponse:
+        try:
+            normalized_agent_id = validate_agent_id(agent_id)
+            record = await run_in_threadpool(
+                state.external_agent_manager.update_agent,
+                normalized_agent_id,
+                base_url=payload.base_url,
+                use_legacy_card_path=payload.use_legacy_card_path,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return JSONResponse({"agent": record.__dict__})
+
+    @router.delete("/agents/external/{agent_id}")
+    @router.delete("/api/v1/agents/external/{agent_id}")
+    async def delete_external_agent(agent_id: str) -> JSONResponse:
+        try:
+            normalized_agent_id = validate_agent_id(agent_id)
+            await run_in_threadpool(state.external_agent_manager.delete_agent, normalized_agent_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return JSONResponse({"ok": True})
+
+    @router.get("/agents/managed")
+    @router.get("/api/v1/agents/managed")
+    async def list_managed_agents() -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        agents_payload = await run_in_threadpool(state.managed_agent_manager.list_agents)
+        return JSONResponse({"agents": [record.__dict__ for record in agents_payload]})
+
+    @router.get("/agents/managed/{agent_id}")
+    @router.get("/api/v1/agents/managed/{agent_id}")
+    async def get_managed_agent(agent_id: str) -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        normalized_agent_id = validate_agent_id(agent_id)
+        record = await run_in_threadpool(state.managed_agent_manager.get_agent, normalized_agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Managed agent '{normalized_agent_id}' not found")
+        return JSONResponse({"agent": record.__dict__})
+
+    @router.get("/agents/managed/{agent_id}/config")
+    @router.get("/api/v1/agents/managed/{agent_id}/config")
+    async def get_managed_agent_config(agent_id: str) -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        try:
+            normalized_agent_id = validate_agent_id(agent_id)
+            config_yaml = await run_in_threadpool(state.managed_agent_manager.get_agent_config, normalized_agent_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return JSONResponse({"configYaml": config_yaml})
+
+    @router.put("/agents/managed/{agent_id}/config")
+    @router.put("/api/v1/agents/managed/{agent_id}/config")
+    async def update_managed_agent_config(agent_id: str, payload: ManagedAgentConfigUpdateRequest) -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        try:
+            normalized_agent_id = validate_agent_id(agent_id)
+            record = await run_in_threadpool(
+                state.managed_agent_manager.update_agent_config,
+                normalized_agent_id,
+                payload.config_yaml,
+                payload.restart,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except Exception as error:
+            raise HTTPException(status_code=500, detail=f"Failed to update agent config: {error}") from error
+        return JSONResponse({"agent": record.__dict__})
+
+    @router.get("/agents/managed/{agent_id}/logs")
+    @router.get("/api/v1/agents/managed/{agent_id}/logs")
+    async def get_managed_agent_logs(agent_id: str, tail: int = 200) -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        try:
+            normalized_agent_id = validate_agent_id(agent_id)
+            record, logs = await run_in_threadpool(
+                state.managed_agent_manager.get_agent_logs, normalized_agent_id, tail
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except Exception as error:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {error}") from error
+
+        return JSONResponse({
+            "agent": record.__dict__,
+            "logs": logs,
+        })
+
+    @router.post("/agents/managed")
+    @router.post("/api/v1/agents/managed")
+    async def create_managed_agent(payload: ManagedAgentCreateRequest) -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        try:
+            normalized_agent_id = validate_agent_id(payload.agent_id)
+            record = await run_in_threadpool(
+                state.managed_agent_manager.create_agent,
+                agent_id=normalized_agent_id,
+                image=payload.image,
+                config_yaml=payload.config_yaml,
+                container_port=payload.container_port,
+                config_mount_path=payload.config_mount_path,
+                extra_env=payload.env,
+                command=payload.command,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except Exception as error:
+            raise HTTPException(status_code=500, detail=f"Failed to create agent: {error}") from error
+
+        mount_path = f"/a2a/managed/{record.agent_id}"
+        return JSONResponse(
+            {
+                "agent": record.__dict__,
+                "proxyBaseUrl": f"{state.base_url}{mount_path}",
+                "agentCardUrl": f"{state.base_url}{mount_path}/.well-known/agent-card.json",
+            },
+            status_code=201,
+        )
+
+    @router.post("/agents/managed/{agent_id}/start")
+    @router.post("/api/v1/agents/managed/{agent_id}/start")
+    async def start_managed_agent(agent_id: str, payload: ManagedAgentStartRequest) -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        try:
+            normalized_agent_id = validate_agent_id(agent_id)
+            record = await run_in_threadpool(
+                state.managed_agent_manager.start_agent,
+                normalized_agent_id,
+                extra_env=payload.env,
+                command=payload.command,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except Exception as error:
+            raise HTTPException(status_code=500, detail=f"Failed to start agent: {error}") from error
+        return JSONResponse({"agent": record.__dict__})
+
+    @router.post("/agents/managed/{agent_id}/stop")
+    @router.post("/api/v1/agents/managed/{agent_id}/stop")
+    async def stop_managed_agent(agent_id: str) -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        try:
+            normalized_agent_id = validate_agent_id(agent_id)
+            record = await run_in_threadpool(state.managed_agent_manager.stop_agent, normalized_agent_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return JSONResponse({"agent": record.__dict__})
+
+    @router.delete("/agents/managed/{agent_id}")
+    @router.delete("/api/v1/agents/managed/{agent_id}")
+    async def delete_managed_agent(agent_id: str, request: Request) -> JSONResponse:
+        if state.managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        remove_config = request.query_params.get("removeConfig") == "true"
+        try:
+            normalized_agent_id = validate_agent_id(agent_id)
+            await run_in_threadpool(state.managed_agent_manager.delete_agent, normalized_agent_id, remove_config)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return JSONResponse({"ok": True})
+
+    return router

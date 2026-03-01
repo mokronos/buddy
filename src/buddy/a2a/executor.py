@@ -25,6 +25,7 @@ from pydantic_ai import (
     ToolReturnPart,
 )
 
+from buddy.a2a.event_writer import SessionEventWriter
 from buddy.a2a.utils import simple_data_part, simple_text_part
 from buddy.agent.deps import AgentDeps
 from buddy.environment.runtime import EnvironmentRuntime
@@ -75,6 +76,7 @@ class PyAIAgentExecutor(AgentExecutor):
         task = context.current_task or new_task(message)
 
         updater = TaskUpdater(event_queue, task.id, context_id)
+        writer = SessionEventWriter(session_store=self.session_store, context_id=context_id, task_id=task.id)
 
         msg_history = self.session_store.load_messages(context_id)
 
@@ -84,27 +86,7 @@ class PyAIAgentExecutor(AgentExecutor):
         await updater.update_status(
             TaskState.working, message=new_agent_text_message(f"Recieved new task with query: {query}")
         )
-        event_index = self.session_store.next_event_index(context_id)
-        self.session_store.append_event(
-            context_id,
-            event_index,
-            {
-                "kind": "status-update",
-                "contextId": context_id,
-                "taskId": task.id,
-                "final": False,
-                "status": {
-                    "state": TaskState.working.value,
-                    "message": {
-                        "kind": "message",
-                        "messageId": str(uuid4()),
-                        "role": "agent",
-                        "parts": [{"kind": "text", "text": f"Recieved new task with query: {query}"}],
-                    },
-                },
-            },
-        )
-        event_index += 1
+        writer.append_status_update(TaskState.working, f"Recieved new task with query: {query}")
 
         output = "Agent didn't produce any output"
         res = None
@@ -157,21 +139,11 @@ class PyAIAgentExecutor(AgentExecutor):
                                 name="output_start",
                                 artifact_id=cur_artifact_id,
                             )
-                            self.session_store.append_event(
-                                context_id,
-                                event_index,
-                                {
-                                    "kind": "artifact-update",
-                                    "contextId": context_id,
-                                    "taskId": task.id,
-                                    "artifact": {
-                                        "artifactId": cur_artifact_id,
-                                        "name": "output_start",
-                                        "parts": [{"kind": "text", "text": part.content}],
-                                    },
-                                },
+                            writer.append_artifact_text(
+                                artifact_id=cur_artifact_id,
+                                name="output_start",
+                                text=part.content,
                             )
-                            event_index += 1
                         if isinstance(part, ThinkingPart):
                             thinking_artifact_id = str(uuid4())
                             await updater.add_artifact(
@@ -179,21 +151,11 @@ class PyAIAgentExecutor(AgentExecutor):
                                 name="thinking_start",
                                 artifact_id=thinking_artifact_id,
                             )
-                            self.session_store.append_event(
-                                context_id,
-                                event_index,
-                                {
-                                    "kind": "artifact-update",
-                                    "contextId": context_id,
-                                    "taskId": task.id,
-                                    "artifact": {
-                                        "artifactId": thinking_artifact_id,
-                                        "name": "thinking_start",
-                                        "parts": [{"kind": "text", "text": part.content}],
-                                    },
-                                },
+                            writer.append_artifact_text(
+                                artifact_id=thinking_artifact_id,
+                                name="thinking_start",
+                                text=part.content,
                             )
-                            event_index += 1
                     if isinstance(event, PartDeltaEvent):
                         delta = event.delta
 
@@ -204,22 +166,12 @@ class PyAIAgentExecutor(AgentExecutor):
                                 append=True,
                                 artifact_id=cur_artifact_id,
                             )
-                            self.session_store.append_event(
-                                context_id,
-                                event_index,
-                                {
-                                    "kind": "artifact-update",
-                                    "contextId": context_id,
-                                    "taskId": task.id,
-                                    "append": True,
-                                    "artifact": {
-                                        "artifactId": cur_artifact_id,
-                                        "name": "output_delta",
-                                        "parts": [{"kind": "text", "text": delta.content_delta}],
-                                    },
-                                },
+                            writer.append_artifact_text(
+                                artifact_id=cur_artifact_id,
+                                name="output_delta",
+                                text=delta.content_delta,
+                                append=True,
                             )
-                            event_index += 1
                         if isinstance(delta, ThinkingPartDelta):
                             content_delta = delta.content_delta if delta.content_delta else ""
                             if thinking_artifact_id is None:
@@ -229,21 +181,11 @@ class PyAIAgentExecutor(AgentExecutor):
                                     name="thinking_start",
                                     artifact_id=thinking_artifact_id,
                                 )
-                                self.session_store.append_event(
-                                    context_id,
-                                    event_index,
-                                    {
-                                        "kind": "artifact-update",
-                                        "contextId": context_id,
-                                        "taskId": task.id,
-                                        "artifact": {
-                                            "artifactId": thinking_artifact_id,
-                                            "name": "thinking_start",
-                                            "parts": [{"kind": "text", "text": content_delta}],
-                                        },
-                                    },
+                                writer.append_artifact_text(
+                                    artifact_id=thinking_artifact_id,
+                                    name="thinking_start",
+                                    text=content_delta,
                                 )
-                                event_index += 1
                             else:
                                 await updater.add_artifact(
                                     [simple_text_part(content_delta)],
@@ -251,22 +193,12 @@ class PyAIAgentExecutor(AgentExecutor):
                                     append=True,
                                     artifact_id=thinking_artifact_id,
                                 )
-                                self.session_store.append_event(
-                                    context_id,
-                                    event_index,
-                                    {
-                                        "kind": "artifact-update",
-                                        "contextId": context_id,
-                                        "taskId": task.id,
-                                        "append": True,
-                                        "artifact": {
-                                            "artifactId": thinking_artifact_id,
-                                            "name": "thinking_delta",
-                                            "parts": [{"kind": "text", "text": content_delta}],
-                                        },
-                                    },
+                                writer.append_artifact_text(
+                                    artifact_id=thinking_artifact_id,
+                                    name="thinking_delta",
+                                    text=content_delta,
+                                    append=True,
                                 )
-                                event_index += 1
 
                     if isinstance(event, PartEndEvent):
                         part = event.part
@@ -276,21 +208,11 @@ class PyAIAgentExecutor(AgentExecutor):
                                 name="output_end",
                                 artifact_id=cur_artifact_id,
                             )
-                            self.session_store.append_event(
-                                context_id,
-                                event_index,
-                                {
-                                    "kind": "artifact-update",
-                                    "contextId": context_id,
-                                    "taskId": task.id,
-                                    "artifact": {
-                                        "artifactId": cur_artifact_id,
-                                        "name": "output_end",
-                                        "parts": [{"kind": "text", "text": part.content}],
-                                    },
-                                },
+                            writer.append_artifact_text(
+                                artifact_id=cur_artifact_id,
+                                name="output_end",
+                                text=part.content,
                             )
-                            event_index += 1
                         if isinstance(part, ThinkingPart):
                             if thinking_artifact_id is None:
                                 thinking_artifact_id = str(uuid4())
@@ -299,21 +221,11 @@ class PyAIAgentExecutor(AgentExecutor):
                                 name="thinking_end",
                                 artifact_id=thinking_artifact_id,
                             )
-                            self.session_store.append_event(
-                                context_id,
-                                event_index,
-                                {
-                                    "kind": "artifact-update",
-                                    "contextId": context_id,
-                                    "taskId": task.id,
-                                    "artifact": {
-                                        "artifactId": thinking_artifact_id,
-                                        "name": "thinking_end",
-                                        "parts": [{"kind": "text", "text": part.content}],
-                                    },
-                                },
+                            writer.append_artifact_text(
+                                artifact_id=thinking_artifact_id,
+                                name="thinking_end",
+                                text=part.content,
                             )
-                            event_index += 1
                         if isinstance(part, ToolCallPart):
                             tool_call_id = part.tool_call_id
                             tool_calls[tool_call_id] = {
@@ -332,30 +244,15 @@ class PyAIAgentExecutor(AgentExecutor):
                                 name="tool_call",
                                 artifact_id=tool_call_artifact_id,
                             )
-                            self.session_store.append_event(
-                                context_id,
-                                event_index,
-                                {
-                                    "kind": "artifact-update",
-                                    "contextId": context_id,
-                                    "taskId": task.id,
-                                    "artifact": {
-                                        "artifactId": tool_call_artifact_id,
-                                        "name": "tool_call",
-                                        "parts": [
-                                            {
-                                                "kind": "data",
-                                                "data": {
-                                                    "toolName": part.tool_name,
-                                                    "toolCallId": tool_call_id,
-                                                    "args": part.args,
-                                                },
-                                            }
-                                        ],
-                                    },
+                            writer.append_artifact_data(
+                                artifact_id=tool_call_artifact_id,
+                                name="tool_call",
+                                data={
+                                    "toolName": part.tool_name,
+                                    "toolCallId": tool_call_id,
+                                    "args": part.args,
                                 },
                             )
-                            event_index += 1
 
                             await updater.update_status(
                                 TaskState.working,
@@ -363,31 +260,10 @@ class PyAIAgentExecutor(AgentExecutor):
                                     f"Calling tool: {part.tool_name} with args: {part.args}"
                                 ),
                             )
-                            self.session_store.append_event(
-                                context_id,
-                                event_index,
-                                {
-                                    "kind": "status-update",
-                                    "contextId": context_id,
-                                    "taskId": task.id,
-                                    "final": False,
-                                    "status": {
-                                        "state": TaskState.working.value,
-                                        "message": {
-                                            "kind": "message",
-                                            "messageId": str(uuid4()),
-                                            "role": "agent",
-                                            "parts": [
-                                                {
-                                                    "kind": "text",
-                                                    "text": f"Calling tool: {part.tool_name} with args: {part.args}",
-                                                }
-                                            ],
-                                        },
-                                    },
-                                },
+                            writer.append_status_update(
+                                TaskState.working,
+                                f"Calling tool: {part.tool_name} with args: {part.args}",
                             )
-                            event_index += 1
 
                     if isinstance(event, FunctionToolResultEvent):
                         res = event.result
@@ -425,73 +301,21 @@ class PyAIAgentExecutor(AgentExecutor):
                             name="tool_result",
                             artifact_id=tool_result_artifact_id,
                         )
-                        self.session_store.append_event(
-                            context_id,
-                            event_index,
-                            {
-                                "kind": "artifact-update",
-                                "contextId": context_id,
-                                "taskId": task.id,
-                                "artifact": {
-                                    "artifactId": tool_result_artifact_id,
-                                    "name": "tool_result",
-                                    "parts": [
-                                        {
-                                            "kind": "data",
-                                            "data": tool_result_data,
-                                        }
-                                    ],
-                                },
-                            },
+                        writer.append_artifact_data(
+                            artifact_id=tool_result_artifact_id,
+                            name="tool_result",
+                            data=cast(dict[str, object], tool_result_data),
                         )
-                        event_index += 1
                         await updater.update_status(
                             TaskState.working, message=new_agent_text_message("Agent thinking ...")
                         )
-                        self.session_store.append_event(
-                            context_id,
-                            event_index,
-                            {
-                                "kind": "status-update",
-                                "contextId": context_id,
-                                "taskId": task.id,
-                                "final": False,
-                                "status": {
-                                    "state": TaskState.working.value,
-                                    "message": {
-                                        "kind": "message",
-                                        "messageId": str(uuid4()),
-                                        "role": "agent",
-                                        "parts": [{"kind": "text", "text": "Agent thinking ..."}],
-                                    },
-                                },
-                            },
-                        )
-                        event_index += 1
+                        writer.append_status_update(TaskState.working, "Agent thinking ...")
 
             res = await run_task
         except Exception as error:
             error_text = str(error)
             await updater.failed(new_agent_text_message(error_text))
-            self.session_store.append_event(
-                context_id,
-                event_index,
-                {
-                    "kind": "status-update",
-                    "contextId": context_id,
-                    "taskId": task.id,
-                    "final": True,
-                    "status": {
-                        "state": TaskState.failed.value,
-                        "message": {
-                            "kind": "message",
-                            "messageId": str(uuid4()),
-                            "role": "agent",
-                            "parts": [{"kind": "text", "text": error_text}],
-                        },
-                    },
-                },
-            )
+            writer.append_status_update(TaskState.failed, error_text, final=True)
             raise RuntimeError(error_text) from error
 
         if res is None:
@@ -507,21 +331,7 @@ class PyAIAgentExecutor(AgentExecutor):
 
         self.session_store.save_messages(context_id, msgs_list)
 
-        self.session_store.append_event(
-            context_id,
-            event_index,
-            {
-                "kind": "artifact-update",
-                "contextId": context_id,
-                "taskId": task.id,
-                "artifact": {
-                    "artifactId": str(uuid4()),
-                    "name": "full_output",
-                    "parts": [{"kind": "text", "text": output}],
-                },
-            },
-        )
-        event_index += 1
+        writer.append_artifact_text(artifact_id=str(uuid4()), name="full_output", text=output)
 
         await updater.add_artifact(
             [simple_text_part(output)],
@@ -533,19 +343,7 @@ class PyAIAgentExecutor(AgentExecutor):
         langfuse.flush()
 
         await updater.update_status(TaskState.completed)
-        self.session_store.append_event(
-            context_id,
-            event_index,
-            {
-                "kind": "status-update",
-                "contextId": context_id,
-                "taskId": task.id,
-                "final": True,
-                "status": {
-                    "state": TaskState.completed.value,
-                },
-            },
-        )
+        writer.append_status_update(TaskState.completed, final=True)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         raise NotImplementedError("Cancellation is not supported yet")

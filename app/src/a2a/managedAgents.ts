@@ -2,9 +2,11 @@ import { DEFAULT_A2A_BASE_URL } from "~/a2a/client";
 import { readJson } from "~/a2a/http";
 import {
   ListManagedAgentsResponseSchema,
+  ManagedAgentConfigResponseSchema,
   ManagedAgentLogsResponseSchema,
   ManagedAgentResponseSchema,
   OkResponseSchema,
+  type ManagedAgentConfigPayload,
   type ManagedAgentPayload,
 } from "~/a2a/schemas";
 
@@ -21,6 +23,11 @@ export interface ManagedAgentCreateInput {
 export interface ManagedAgentLogs {
   agent: ManagedAgent;
   logs: string;
+}
+
+export interface ManagedAgentConfigUpdateInput {
+  config_yaml: string;
+  restart: boolean;
 }
 
 export async function listManagedAgents(): Promise<ManagedAgent[]> {
@@ -72,4 +79,25 @@ export async function getManagedAgentLogs(agentId: string, tail: number = 200): 
   const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed/${agentId}/logs?tail=${tail}`);
   const payload = await readJson(response, ManagedAgentLogsResponseSchema);
   return payload;
+}
+
+export async function getManagedAgentConfig(agentId: string): Promise<string> {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed/${agentId}/config`);
+  const payload = await readJson<ManagedAgentConfigPayload>(response, ManagedAgentConfigResponseSchema);
+  return payload.configYaml;
+}
+
+export async function updateManagedAgentConfig(
+  agentId: string,
+  input: ManagedAgentConfigUpdateInput,
+): Promise<ManagedAgent> {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed/${agentId}/config`, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  const payload = await readJson(response, ManagedAgentResponseSchema);
+  return payload.agent;
 }

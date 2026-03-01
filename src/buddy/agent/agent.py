@@ -1,6 +1,6 @@
 import os
 from time import sleep
-from typing import NoReturn
+from typing import Any, NoReturn, cast
 
 from dotenv import load_dotenv
 from langfuse import Langfuse
@@ -87,9 +87,34 @@ environment_tools = FunctionToolset(
 )
 
 
-def create_agent(name: str, instructions: str) -> Agent[AgentDeps, str]:
+def create_agent(
+    name: str,
+    instructions: str,
+    *,
+    model: str = "openrouter:openrouter/free",
+    enable_web_search: bool = True,
+    enable_todo: bool = True,
+    enable_environment: bool = True,
+) -> Agent[AgentDeps, str]:
+    if enable_web_search and enable_todo and enable_environment:
+        toolsets = [web_tools, todo_tools, environment_tools]
+    elif enable_web_search and enable_todo:
+        toolsets = [web_tools, todo_tools]
+    elif enable_web_search and enable_environment:
+        toolsets = [web_tools, environment_tools]
+    elif enable_todo and enable_environment:
+        toolsets = [todo_tools, environment_tools]
+    elif enable_web_search:
+        toolsets = [web_tools]
+    elif enable_todo:
+        toolsets = [todo_tools]
+    elif enable_environment:
+        toolsets = [environment_tools]
+    else:
+        toolsets = []
+
     return Agent(
-        model="openrouter:openrouter/free",
+        model=model,
         name=name,
         deps_type=AgentDeps,
         instructions=instructions,
@@ -97,7 +122,7 @@ def create_agent(name: str, instructions: str) -> Agent[AgentDeps, str]:
         # model="google-gla:gemini-2.5-flash",
         # model="google-gla:gemini-2.5-pro",
         # model="google-gla:gemini-2.5-flash-lite",
-        toolsets=[web_tools, todo_tools, environment_tools],
+        toolsets=cast(Any, toolsets),
         instrument=langfuse_ready,
     )
 

@@ -1,9 +1,10 @@
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
+from buddy.a2a.validation import normalize_external_base_url, validate_agent_id
 from buddy.data_dirs import buddy_data_dir
 
 
@@ -29,9 +30,7 @@ class ExternalAgentManager:
         return self._records.get(agent_id)
 
     def create_agent(self, *, agent_id: str, base_url: str, use_legacy_card_path: bool = False) -> ExternalAgentRecord:
-        normalized_agent_id = agent_id.strip()
-        if not normalized_agent_id:
-            raise ValueError("Agent id is required")
+        normalized_agent_id = validate_agent_id(agent_id)
         if normalized_agent_id in self._records:
             raise ValueError(f"External agent '{normalized_agent_id}' already exists")
 
@@ -119,11 +118,13 @@ class ExternalAgentManager:
 
     @staticmethod
     def _normalize_base_url(base_url: str) -> str:
-        normalized = base_url.strip().rstrip("/")
-        parsed = urlparse(normalized)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("External URL must be a valid http(s) URL")
-        return normalized
+        allow_private_hosts = os.environ.get("BUDDY_ALLOW_PRIVATE_EXTERNAL_URLS", "true").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        return normalize_external_base_url(base_url, allow_private_hosts=allow_private_hosts)
 
     @staticmethod
     def _now() -> str:

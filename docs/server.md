@@ -1,49 +1,63 @@
 # Server
-Backend endpoints and streaming behavior in one place.
+Control-plane endpoints and A2A proxy behavior.
 
 ---
-## Understand
-Buddy runs a FastAPI app and mounts the A2A JSON-RPC server under `/a2a`. Sessions, events, and chat history persist in `sessions.db` for replay.
+## Overview
+Buddy runs a FastAPI control plane. It exposes domain-style APIs for the UI and proxies raw A2A traffic at the agent boundary.
+
+- Domain APIs are available under `/api/v1/...`.
+- Backward-compatible aliases still exist for `/sessions` and `/agents`.
+- A2A endpoints are mounted per agent (`/a2a/<agent-key>`) and proxied for managed/external agents.
+
+Session history, events, and chat messages persist in `sessions.db`.
 
 ---
-## Call
-Use the A2A JSON-RPC endpoint at `POST /a2a` for messages and streaming. Fetch the agent card from `GET /a2a/.well-known/agent-card.json` (legacy `/a2a/.well-known/agent.json`). The agent card advertises the `/a2a` base URL for clients.
+## Domain API
+Main control-plane APIs:
 
-Quick one-off test from the CLI:
+- `GET /api/v1/sessions`
+- `GET /api/v1/sessions/{session_id}`
+- `GET /api/v1/agents`
+- `GET /api/v1/agents/managed`
+- `POST /api/v1/agents/managed`
+- `GET /api/v1/agents/managed/{agent_id}/config`
+- `PUT /api/v1/agents/managed/{agent_id}/config`
+- `GET /api/v1/agents/external`
+- `POST /api/v1/agents/external`
 
-```bash
-uv run buddy ask "Say hello in one short sentence"
-```
-
-Raw JSON-RPC via curl:
-
-```bash
-curl -sS http://localhost:10001/a2a \
-  -H 'content-type: application/json' \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": "1",
-    "method": "message/send",
-    "params": {
-      "message": {
-        "messageId": "one-off-1",
-        "kind": "message",
-        "role": "user",
-        "parts": [{"kind": "text", "text": "Say hello in one short sentence"}],
-        "contextId": "quick-test"
-      }
-    }
-  }'
-```
+Managed-agent config is YAML and is validated before create/update.
 
 ---
-## Stream
-Streaming responses arrive as SSE events from the A2A handler. The backend emits `status-update` events plus `artifact-update` chunks like `output_delta`, `output_end`, `tool_result`, and `full_output`.
+## A2A Boundary
+Raw A2A JSON-RPC/SSE stays at the agent boundary:
+
+- In-process agents: `/a2a/<agent-key>`
+- Managed container proxies: `/a2a/managed/{agent_id}`
+- External agent proxies: `/a2a/external/{agent_id}`
+
+Agent-card requests are rewritten so `url` points at the control-plane proxy URL.
 
 ---
-## Restore
-Session history endpoints live at `GET /sessions` and `GET /sessions/{session_id}`. The detail response includes messages and stored events so clients can replay the stream.
+## Runtime API
+Internal runtime endpoints are for environment container operations only:
+
+- `POST /internal/runtime/acquire`
+- `POST /internal/runtime/release`
+- `POST /internal/runtime/exec`
+- `POST /internal/runtime/read-file`
+- `POST /internal/runtime/write-file`
+- `POST /internal/runtime/patch-file`
+
+Use header `x-buddy-internal-token` when `BUDDY_INTERNAL_RUNTIME_TOKEN` is configured.
+
+---
+## Security Defaults
+- In non-local environments, `BUDDY_INTERNAL_RUNTIME_TOKEN` is required by default.
+- To explicitly bypass this in development, set `BUDDY_ALLOW_INSECURE_INTERNAL_RUNTIME=true`.
+- External agent URLs are validated (http/https only, no credentials/query/fragment).
 
 ---
 ## Configure
-Set `BUDDY_PUBLIC_URL` to control the base URL advertised in the agent card. Provide either `https://host/a2a` or `https://host` and the server will normalize it. The server still binds to the host/port from `uvicorn`.
+- `BUDDY_PUBLIC_URL` controls advertised/proxy base URLs.
+- `BUDDY_RUNTIME_API_BASE_URL` switches server/runtime split mode.
+- `BUDDY_ALLOW_PRIVATE_EXTERNAL_URLS` controls whether private/loopback external URLs are allowed.

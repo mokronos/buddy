@@ -53,6 +53,10 @@ export const ManagedAgentLogsResponseSchema = z.object({
   logs: z.string(),
 });
 
+export const ManagedAgentConfigResponseSchema = z.object({
+  configYaml: z.string(),
+});
+
 export const ExternalAgentSchema = z.object({
   agent_id: z.string(),
   base_url: z.string(),
@@ -78,4 +82,5 @@ export type AgentsIndexResponsePayload = z.infer<typeof AgentsIndexResponseSchem
 export type AgentCardPayload = z.infer<typeof AgentCardSchema>;
 export type ManagedAgentPayload = z.infer<typeof ManagedAgentSchema>;
 export type ManagedAgentLogsPayload = z.infer<typeof ManagedAgentLogsResponseSchema>;
+export type ManagedAgentConfigPayload = z.infer<typeof ManagedAgentConfigResponseSchema>;
 export type ExternalAgentPayload = z.infer<typeof ExternalAgentSchema>;

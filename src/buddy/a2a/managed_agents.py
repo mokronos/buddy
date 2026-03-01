@@ -11,6 +11,8 @@ import docker
 import requests
 from docker.errors import NotFound
 
+from buddy.a2a.validation import validate_agent_id
+from buddy.agent.config import parse_runtime_agent_config_yaml
 from buddy.data_dirs import buddy_data_dir
 
 
@@ -67,9 +69,11 @@ class ManagedAgentManager:
         command: list[str] | None,
     ) -> ManagedAgentRecord:
         with self._lock:
+            agent_id = validate_agent_id(agent_id)
             if agent_id in self._records:
                 raise ValueError(f"Agent '{agent_id}' already exists")
 
+            self._validate_config(agent_id, config_yaml)
             config_path = self._write_config(agent_id, config_yaml)
             now = self._now()
             record = ManagedAgentRecord(
@@ -113,6 +117,7 @@ class ManagedAgentManager:
         command: list[str] | None = None,
     ) -> ManagedAgentRecord:
         with self._lock:
+            agent_id = validate_agent_id(agent_id)
             record = self._records.get(agent_id)
             if record is None:
                 raise ValueError(f"Agent '{agent_id}' does not exist")
@@ -152,6 +157,7 @@ class ManagedAgentManager:
 
     def stop_agent(self, agent_id: str) -> ManagedAgentRecord:
         with self._lock:
+            agent_id = validate_agent_id(agent_id)
             record = self._records.get(agent_id)
             if record is None:
                 raise ValueError(f"Agent '{agent_id}' does not exist")
@@ -176,6 +182,7 @@ class ManagedAgentManager:
 
     def delete_agent(self, agent_id: str, remove_config: bool = False) -> None:
         with self._lock:
+            agent_id = validate_agent_id(agent_id)
             record = self._records.pop(agent_id, None)
             if record is None:
                 raise ValueError(f"Agent '{agent_id}' does not exist")
@@ -193,7 +200,39 @@ class ManagedAgentManager:
             if config_path.exists():
                 config_path.unlink()
 
+    def get_agent_config(self, agent_id: str) -> str:
+        with self._lock:
+            agent_id = validate_agent_id(agent_id)
+            record = self._records.get(agent_id)
+            if record is None:
+                raise ValueError(f"Agent '{agent_id}' does not exist")
+            config_path = Path(record.config_path)
+            if not config_path.exists():
+                raise ValueError(f"Config file for agent '{agent_id}' does not exist")
+            return config_path.read_text(encoding="utf-8")
+
+    def update_agent_config(self, agent_id: str, config_yaml: str, restart: bool = True) -> ManagedAgentRecord:
+        with self._lock:
+            agent_id = validate_agent_id(agent_id)
+            record = self._records.get(agent_id)
+            if record is None:
+                raise ValueError(f"Agent '{agent_id}' does not exist")
+            self._validate_config(agent_id, config_yaml)
+            Path(record.config_path).write_text(config_yaml, encoding="utf-8")
+            updated = ManagedAgentRecord(**{
+                **asdict(record),
+                "updated_at": self._now(),
+            })
+            self._records[agent_id] = updated
+            self._save_registry()
+
+        if restart and updated.status == "running":
+            self.stop_agent(agent_id)
+            return self.start_agent(agent_id)
+        return updated
+
     def resolve_target(self, agent_id: str, path: str) -> str:
+        agent_id = validate_agent_id(agent_id)
         record = self.get_agent(agent_id)
         if record is None:
             raise ValueError(f"Agent '{agent_id}' does not exist")
@@ -207,6 +246,7 @@ class ManagedAgentManager:
             raise ValueError("tail must be greater than 0")
 
         with self._lock:
+            agent_id = validate_agent_id(agent_id)
             record = self._records.get(agent_id)
             if record is None:
                 raise ValueError(f"Agent '{agent_id}' does not exist")
@@ -302,6 +342,9 @@ class ManagedAgentManager:
                 labels={
                     "buddy.managed_agent": "true",
                     "buddy.agent_id": record.agent_id,
+                    "buddy.config_path": record.config_path,
+                    "buddy.config_mount_path": record.config_mount_path,
+                    "buddy.container_port": str(record.container_port),
                 },
             )
             created_container = True
@@ -393,6 +436,69 @@ class ManagedAgentManager:
             except TypeError:
                 continue
         self._records = loaded
+
+    def reconcile_from_docker(self) -> list[ManagedAgentRecord]:
+        discovered = self._docker.containers.list(all=True, filters={"label": "buddy.managed_agent=true"})
+        with self._lock:
+            for container in discovered:
+                container.reload()
+                labels = container.labels or {}
+                labeled_agent_id = labels.get("buddy.agent_id")
+                if not isinstance(labeled_agent_id, str):
+                    continue
+                try:
+                    agent_id = validate_agent_id(labeled_agent_id)
+                except ValueError:
+                    continue
+
+                existing = self._records.get(agent_id)
+                if existing is None:
+                    config_path = labels.get("buddy.config_path")
+                    config_mount_path = labels.get("buddy.config_mount_path")
+                    container_port_raw = labels.get("buddy.container_port")
+                    if not isinstance(config_path, str) or not isinstance(config_mount_path, str):
+                        continue
+                    try:
+                        container_port = int(container_port_raw) if isinstance(container_port_raw, str) else 10001
+                    except ValueError:
+                        container_port = 10001
+                    now = self._now()
+                    existing = ManagedAgentRecord(
+                        agent_id=agent_id,
+                        image=container.image.tags[0] if container.image.tags else "unknown",
+                        config_path=config_path,
+                        config_mount_path=config_mount_path,
+                        container_port=container_port,
+                        container_id=container.id,
+                        host_port=None,
+                        status=container.status,
+                        last_error=None,
+                        created_at=now,
+                        updated_at=now,
+                    )
+
+                refreshed = self._refresh_status(existing)
+                if refreshed.container_id is None:
+                    refreshed = ManagedAgentRecord(**{
+                        **asdict(refreshed),
+                        "container_id": container.id,
+                        "status": container.status,
+                        "updated_at": self._now(),
+                    })
+                    refreshed = self._refresh_status(refreshed)
+
+                self._records[agent_id] = refreshed
+
+            self._save_registry()
+            return sorted(self._records.values(), key=lambda item: item.agent_id)
+
+    def _validate_config(self, agent_id: str, config_yaml: str) -> None:
+        try:
+            config = parse_runtime_agent_config_yaml(config_yaml)
+        except (TypeError, ValueError) as error:
+            raise ValueError(str(error)) from error
+        if config.agent.id != agent_id:
+            raise ValueError(f"Config agent.id ('{config.agent.id}') must match managed agent id ('{agent_id}')")
 
     def _wait_for_a2a_ready(self, agent_id: str, host_port: int) -> None:
         base_url = f"http://127.0.0.1:{host_port}"

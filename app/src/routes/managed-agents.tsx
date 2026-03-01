@@ -10,9 +10,11 @@ import {
 import {
   createManagedAgent,
   deleteManagedAgent,
+  getManagedAgentConfig,
   listManagedAgents,
   startManagedAgent,
   stopManagedAgent,
+  updateManagedAgentConfig,
   type ManagedAgent,
 } from "~/a2a/managedAgents";
 import TopTabs from "~/components/TopTabs";
@@ -47,6 +49,9 @@ export default function ManagedAgentsPage() {
   const [containerPort, setContainerPort] = createSignal("10001");
   const [configMountPath, setConfigMountPath] = createSignal("/etc/buddy/agent.yaml");
   const [configYaml, setConfigYaml] = createSignal(defaultConfigYaml);
+  const [editingManagedAgentId, setEditingManagedAgentId] = createSignal<string | null>(null);
+  const [editingManagedConfigYaml, setEditingManagedConfigYaml] = createSignal("");
+  const [restartManagedAfterConfigSave, setRestartManagedAfterConfigSave] = createSignal(true);
   const [externalAgentId, setExternalAgentId] = createSignal("");
   const [externalAgentUrl, setExternalAgentUrl] = createSignal("");
   const [externalUseLegacyCardPath, setExternalUseLegacyCardPath] = createSignal(false);
@@ -62,6 +67,13 @@ export default function ManagedAgentsPage() {
   const startManagedMutation = useMutation(() => ({ mutationFn: startManagedAgent }));
   const stopManagedMutation = useMutation(() => ({ mutationFn: stopManagedAgent }));
   const deleteManagedMutation = useMutation(() => ({ mutationFn: deleteManagedAgent }));
+  const updateManagedConfigMutation = useMutation(() => ({
+    mutationFn: (variables: { agentId: string; config_yaml: string; restart: boolean }) =>
+      updateManagedAgentConfig(variables.agentId, {
+        config_yaml: variables.config_yaml,
+        restart: variables.restart,
+      }),
+  }));
   const createExternalMutation = useMutation(() => ({ mutationFn: createExternalAgent }));
   const deleteExternalMutation = useMutation(() => ({ mutationFn: deleteExternalAgent }));
   const updateExternalMutation = useMutation(() => ({
@@ -149,6 +161,48 @@ export default function ManagedAgentsPage() {
       await syncAgentQueries();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to delete agent");
+    }
+  };
+
+  const beginEditManagedAgent = async (managedAgentId: string): Promise<void> => {
+    setActionMessage(null);
+    setErrorMessage(null);
+    try {
+      const loadedConfig = await getManagedAgentConfig(managedAgentId);
+      setEditingManagedAgentId(managedAgentId);
+      setEditingManagedConfigYaml(loadedConfig);
+      setRestartManagedAfterConfigSave(true);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to load managed agent config");
+    }
+  };
+
+  const cancelEditManagedAgent = (): void => {
+    setEditingManagedAgentId(null);
+    setEditingManagedConfigYaml("");
+    setRestartManagedAfterConfigSave(true);
+  };
+
+  const saveManagedAgentConfig = async (managedAgentId: string): Promise<void> => {
+    setActionMessage(null);
+    setErrorMessage(null);
+    const nextConfig = editingManagedConfigYaml().trim();
+    if (nextConfig.length === 0) {
+      setErrorMessage("Config YAML cannot be empty");
+      return;
+    }
+
+    try {
+      await updateManagedConfigMutation.mutateAsync({
+        agentId: managedAgentId,
+        config_yaml: nextConfig,
+        restart: restartManagedAfterConfigSave(),
+      });
+      setActionMessage(`Updated config for managed agent '${managedAgentId}'`);
+      cancelEditManagedAgent();
+      await syncAgentQueries();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to update managed agent config");
     }
   };
 
@@ -400,12 +454,53 @@ export default function ManagedAgentsPage() {
                       </button>
                       <button
                         type="button"
+                        class="rounded-md border border-zinc-700 px-3 py-1 text-xs hover:border-zinc-400"
+                        onClick={() => void beginEditManagedAgent(agent.agent_id)}
+                      >
+                        Edit Config
+                      </button>
+                      <button
+                        type="button"
                         class="rounded-md border border-red-700 px-3 py-1 text-xs text-red-300 hover:border-red-500"
                         onClick={() => void removeAgent(agent.agent_id)}
                       >
                         Delete
                       </button>
                     </div>
+                    {editingManagedAgentId() === agent.agent_id ? (
+                      <div class="mt-3 grid gap-2">
+                        <textarea
+                          class="h-48 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs"
+                          value={editingManagedConfigYaml()}
+                          onInput={(event) => setEditingManagedConfigYaml(event.currentTarget.value)}
+                        />
+                        <label class="inline-flex items-center gap-2 text-xs text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={restartManagedAfterConfigSave()}
+                            onChange={(event) => setRestartManagedAfterConfigSave(event.currentTarget.checked)}
+                          />
+                          Restart container after save
+                        </label>
+                        <div class="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={updateManagedConfigMutation.isPending}
+                            class="rounded-md border border-zinc-600 px-3 py-1 text-xs text-zinc-100 hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-70"
+                            onClick={() => void saveManagedAgentConfig(agent.agent_id)}
+                          >
+                            Save Config
+                          </button>
+                          <button
+                            type="button"
+                            class="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                            onClick={cancelEditManagedAgent}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </article>
                 )}
               </For>

@@ -43,9 +43,25 @@ class PyAIAgentExecutor(AgentExecutor):
         self.environment_manager = environment_manager
 
     def _environment_owner_id(self, context_id: str) -> str:
+        owner_from_context = self._owner_name_from_context(context_id)
+        if owner_from_context is not None:
+            return f"{owner_from_context}:{context_id}"
+
         raw_name = self.agent.name or "agent"
         safe_name = "".join(ch.lower() if ch.isalnum() else "-" for ch in raw_name).strip("-") or "agent"
         return f"{safe_name}:{context_id}"
+
+    def _owner_name_from_context(self, context_id: str) -> str | None:
+        prefix = "agent-"
+        separator = "--"
+        if not context_id.startswith(prefix):
+            return None
+        if separator not in context_id:
+            return None
+        candidate = context_id.split(separator, 1)[0]
+        if len(candidate) <= len(prefix):
+            return None
+        return candidate
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         query = context.get_user_input()

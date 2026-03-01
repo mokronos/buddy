@@ -51,6 +51,18 @@ function timestamp(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function toSlug(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : "agent";
+}
+
+function buildAgentContextId(agentKey: string): string {
+  return `agent-${toSlug(agentKey)}--${crypto.randomUUID()}`;
+}
+
 function readTextParts(value: unknown): string {
   if (!Array.isArray(value)) {
     return "";
@@ -412,7 +424,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
   const sendMessage = async (content: string): Promise<void> => {
     const targetAgentKey = activeAgentKey();
-    const activeContextId = (conversations()[targetAgentKey]?.contextId ?? null) ?? crypto.randomUUID();
+    const activeContextId = (conversations()[targetAgentKey]?.contextId ?? null) ?? buildAgentContextId(targetAgentKey);
 
     updateConversation(targetAgentKey, (current) => {
       if (current.contextId) {

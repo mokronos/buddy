@@ -1,4 +1,5 @@
 import os
+from typing import NoReturn
 
 from dotenv import load_dotenv
 from langfuse import Langfuse
@@ -18,7 +19,7 @@ from buddy.tools.web_search import fetch_web_page, web_search
 load_dotenv()
 
 
-def _raise_langfuse_auth_error() -> None:
+def _raise_langfuse_auth_error() -> NoReturn:
     raise RuntimeError("Langfuse authentication failed. Check credentials and host.")
 
 
@@ -32,6 +33,7 @@ def _is_langfuse_ready() -> bool:
             return True
         if require_langfuse:
             _raise_langfuse_auth_error()
+            return False
         else:
             print("Langfuse auth failed; continuing with instrumentation disabled.")
             return False
@@ -40,6 +42,8 @@ def _is_langfuse_ready() -> bool:
             raise
         print(f"Langfuse unavailable ({error}); continuing with instrumentation disabled.")
         return False
+
+    return False
 
 
 langfuse_ready = _is_langfuse_ready()
@@ -89,12 +93,7 @@ agent = create_agent(
     "buddy-agent",
     "You are the English Buddy agent. Reply in English only.",
 )
-second_agent = create_agent(
-    "buddy-agent-2",
-    "Du bist der deutsche Buddy-Agent. Antworte nur auf Deutsch.",
-)
 
 agents = {
     "buddy": agent,
-    "buddy-2": second_agent,
 }

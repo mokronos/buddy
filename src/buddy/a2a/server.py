@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import cast
 
 import requests
 from a2a.server.apps import A2AFastAPIApplication
@@ -46,6 +47,25 @@ def _int_env(name: str, default: int) -> int:
 
 
 internal_runtime_token = os.environ.get("BUDDY_INTERNAL_RUNTIME_TOKEN")
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _default_managed_agent_yaml() -> str:
+    return """agent:
+  id: buddy
+  name: buddy
+  instructions: \"You are the English Buddy agent. Reply in English only.\"
+  model: openrouter:openrouter/free
+
+a2a:
+  port: 10001
+"""
 
 
 class ManagedAgentCreateRequest(BaseModel):
@@ -177,7 +197,10 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             raise HTTPException(status_code=401, detail="Unauthorized internal runtime request")
 
     def _fetch_managed_runtime_routes(agent_id: str) -> tuple[str, str]:
-        target_base = managed_agent_manager.resolve_target(agent_id, "/")
+        if managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        manager = cast(ManagedAgentManager, managed_agent_manager)
+        target_base = manager.resolve_target(agent_id, "/")
         try:
             response = requests.get(f"{target_base.rstrip('/')}/agents", timeout=5)
             response.raise_for_status()
@@ -219,6 +242,22 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
     async def _startup() -> None:
         if local_environment_manager is not None:
             local_environment_manager.start()
+
+        if managed_agent_manager is not None and _bool_env("BUDDY_DEFAULT_MANAGED_AGENT_ENABLED", True):
+            default_agent_id = os.environ.get("BUDDY_DEFAULT_MANAGED_AGENT_ID", "buddy")
+            existing = managed_agent_manager.get_agent(default_agent_id)
+            if existing is None:
+                managed_agent_manager.create_agent(
+                    agent_id=default_agent_id,
+                    image=os.environ.get("BUDDY_DEFAULT_MANAGED_AGENT_IMAGE", "buddy-agent-runtime:latest"),
+                    config_yaml=_default_managed_agent_yaml(),
+                    container_port=_int_env("BUDDY_DEFAULT_MANAGED_AGENT_PORT", 10001),
+                    config_mount_path="/etc/buddy/agent.yaml",
+                    extra_env={},
+                    command=None,
+                )
+            else:
+                managed_agent_manager.start_agent(default_agent_id)
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
@@ -285,6 +324,16 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         )
         all_entries = [*agent_index, *managed_entries]
         default_key = default_agent_key
+        managed_default_key = next(
+            (
+                entry["key"]
+                for entry in managed_entries
+                if entry.get("name") == os.environ.get("BUDDY_DEFAULT_MANAGED_AGENT_ID", "buddy")
+            ),
+            None,
+        )
+        if managed_default_key is not None:
+            default_key = managed_default_key
         if default_key is None and all_entries:
             default_key = all_entries[0]["key"]
         return JSONResponse({
@@ -384,7 +433,8 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
     async def proxy_managed_agent(agent_id: str, request: Request, proxy_path: str = "") -> Response:
-        if managed_agent_manager is None:
+        manager = managed_agent_manager
+        if manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
             mount_path, card_path = _fetch_managed_runtime_routes(agent_id)
@@ -393,7 +443,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
 
         proxy_root = f"{base_url}/a2a/managed/{agent_id}"
         if proxy_path == ".well-known/agent-card.json":
-            upstream_card_url = managed_agent_manager.resolve_target(agent_id, card_path)
+            upstream_card_url = manager.resolve_target(agent_id, card_path)
             try:
                 card_response = requests.get(upstream_card_url, timeout=15)
                 card_response.raise_for_status()
@@ -409,7 +459,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         upstream_path = f"{mount_path.rstrip('/')}/{relative_path}" if relative_path else mount_path
 
         try:
-            target_url = managed_agent_manager.resolve_target(agent_id, upstream_path)
+            target_url = manager.resolve_target(agent_id, upstream_path)
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
 

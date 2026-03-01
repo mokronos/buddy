@@ -1,7 +1,14 @@
+import os
+from typing import cast
+
+from pydantic_ai import Agent
+
 from buddy.a2a.server import create_app
 from buddy.agent.agent import agents
 
-app = create_app(agents)
+runtime_mode = os.environ.get("BUDDY_RUNTIME_API_BASE_URL") is not None
+runtime_agents = cast(dict[str, Agent], agents) if runtime_mode else {}
+app = create_app(runtime_agents)
 
 if __name__ == "__main__":
     import uvicorn

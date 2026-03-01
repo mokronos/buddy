@@ -399,13 +399,11 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         })
 
     @app.get("/agents/external")
-    @app.get("/external-agents")
     async def list_external_agents() -> JSONResponse:
         records = [record.__dict__ for record in external_agent_manager.list_agents()]
         return JSONResponse({"agents": records})
 
     @app.post("/agents/external")
-    @app.post("/external-agents")
     async def create_external_agent(payload: ExternalAgentCreateRequest) -> JSONResponse:
         try:
             record = external_agent_manager.create_agent(
@@ -428,7 +426,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         )
 
     @app.put("/agents/external/{agent_id}")
-    @app.put("/external-agents/{agent_id}")
     async def update_external_agent(agent_id: str, payload: ExternalAgentUpdateRequest) -> JSONResponse:
         try:
             record = external_agent_manager.update_agent(
@@ -441,7 +438,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         return JSONResponse({"agent": record.__dict__})
 
     @app.delete("/agents/external/{agent_id}")
-    @app.delete("/external-agents/{agent_id}")
     async def delete_external_agent(agent_id: str) -> JSONResponse:
         try:
             external_agent_manager.delete_agent(agent_id)
@@ -450,7 +446,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         return JSONResponse({"ok": True})
 
     @app.get("/agents/managed")
-    @app.get("/managed-agents")
     async def list_managed_agents() -> JSONResponse:
         if managed_agent_manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
@@ -458,7 +453,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         return JSONResponse({"agents": agents_payload})
 
     @app.get("/agents/managed/{agent_id}")
-    @app.get("/managed-agents/{agent_id}")
     async def get_managed_agent(agent_id: str) -> JSONResponse:
         if managed_agent_manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
@@ -468,7 +462,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         return JSONResponse({"agent": record.__dict__})
 
     @app.get("/agents/managed/{agent_id}/logs")
-    @app.get("/managed-agents/{agent_id}/logs")
     async def get_managed_agent_logs(agent_id: str, tail: int = 200) -> JSONResponse:
         if managed_agent_manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
@@ -485,7 +478,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         })
 
     @app.post("/agents/managed")
-    @app.post("/managed-agents")
     async def create_managed_agent(payload: ManagedAgentCreateRequest) -> JSONResponse:
         if managed_agent_manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
@@ -515,7 +507,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         )
 
     @app.post("/agents/managed/{agent_id}/start")
-    @app.post("/managed-agents/{agent_id}/start")
     async def start_managed_agent(agent_id: str, payload: ManagedAgentStartRequest) -> JSONResponse:
         if managed_agent_manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
@@ -532,7 +523,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         return JSONResponse({"agent": record.__dict__})
 
     @app.post("/agents/managed/{agent_id}/stop")
-    @app.post("/managed-agents/{agent_id}/stop")
     async def stop_managed_agent(agent_id: str) -> JSONResponse:
         if managed_agent_manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
@@ -543,7 +533,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         return JSONResponse({"agent": record.__dict__})
 
     @app.delete("/agents/managed/{agent_id}")
-    @app.delete("/managed-agents/{agent_id}")
     async def delete_managed_agent(agent_id: str, request: Request) -> JSONResponse:
         if managed_agent_manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")

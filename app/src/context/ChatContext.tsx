@@ -10,6 +10,12 @@ import {
   type JSX,
   type Setter,
 } from "solid-js";
+import { readJson } from "~/a2a/http";
+import {
+  AgentCardSchema,
+  AgentsIndexResponseSchema,
+  type AgentCardPayload,
+} from "~/a2a/schemas";
 import { createA2AClient, DEFAULT_A2A_BASE_URL } from "~/a2a/client";
 import type { Message } from "~/data/sampleMessages";
 
@@ -163,7 +169,7 @@ function createWorkspace(initialMessages: Message[] = []): AgentWorkspaceState {
   };
 }
 
-function readStringValue(value: unknown): string | null {
+function toNormalizedString(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -172,42 +178,14 @@ function readStringValue(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function readAgentCardDetails(value: unknown): AgentCardDetails {
-  if (!value || typeof value !== "object") {
-    return {
-      description: null,
-      version: null,
-      skills: [],
-    };
-  }
-
-  const payload = value as {
-    description?: unknown;
-    version?: unknown;
-    skills?: unknown;
-  };
-
-  const skills = Array.isArray(payload.skills)
-    ? payload.skills
-        .map((entry) => {
-          if (!entry || typeof entry !== "object") {
-            return null;
-          }
-
-          const skill = entry as { name?: unknown; id?: unknown };
-          const skillName = readStringValue(skill.name);
-          if (skillName) {
-            return skillName;
-          }
-
-          return readStringValue(skill.id);
-        })
-        .filter((entry): entry is string => entry !== null)
-    : [];
+function toAgentCardDetails(payload: AgentCardPayload): AgentCardDetails {
+  const skills = (payload.skills ?? [])
+    .map((skill) => toNormalizedString(skill.name) ?? toNormalizedString(skill.id))
+    .filter((entry): entry is string => entry !== null);
 
   return {
-    description: readStringValue(payload.description),
-    version: readStringValue(payload.version),
+    description: toNormalizedString(payload.description),
+    version: toNormalizedString(payload.version),
     skills,
   };
 }
@@ -231,55 +209,18 @@ interface AgentsIndexPayload {
 
 async function fetchAgentsIndex(): Promise<AgentsIndexPayload> {
   const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch agents: HTTP ${response.status}`);
-  }
+  const payload = await readJson(response, AgentsIndexResponseSchema);
 
-  const payload = (await response.json()) as {
-    defaultAgentKey?: unknown;
-    agents?: unknown;
-  };
-
-  if (!Array.isArray(payload.agents)) {
-    throw new Error("Invalid /agents response: missing agents array");
-  }
-
-  const agents = payload.agents
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
-
-      const candidate = entry as {
-        key?: unknown;
-        name?: unknown;
-        mountPath?: unknown;
-        agentCardPath?: unknown;
-        url?: unknown;
-      };
-
-      if (
-        typeof candidate.key !== "string" ||
-        typeof candidate.name !== "string" ||
-        typeof candidate.mountPath !== "string" ||
-        typeof candidate.agentCardPath !== "string" ||
-        typeof candidate.url !== "string"
-      ) {
-        return null;
-      }
-
-      return {
-        key: candidate.key,
-        name: candidate.name,
-        mountPath: candidate.mountPath,
-        agentCardPath: candidate.agentCardPath,
-        url: candidate.url,
-        description: null,
-        version: null,
-        skills: [],
-      } as AgentEndpoint;
-    })
-    .filter((entry): entry is AgentEndpoint => entry !== null);
+  const agents = payload.agents.map((entry) => ({
+    key: entry.key,
+    name: entry.name,
+    mountPath: entry.mountPath,
+    agentCardPath: entry.agentCardPath,
+    url: entry.url,
+    description: null,
+    version: null,
+    skills: [],
+  }));
 
   if (agents.length === 0) {
     throw new Error("No agents returned from /agents");
@@ -298,16 +239,16 @@ async function fetchAgentsIndex(): Promise<AgentsIndexPayload> {
 
 async function fetchAgentCardDetails(agentCardPath: string): Promise<AgentCardDetails> {
   const cardResponse = await fetch(resolveAgentCardUrl(agentCardPath), { cache: "no-store" });
-  if (!cardResponse.ok) {
+  try {
+    const cardPayload = await readJson(cardResponse, AgentCardSchema);
+    return toAgentCardDetails(cardPayload);
+  } catch {
     return {
       description: null,
       version: null,
       skills: [],
     };
   }
-
-  const cardPayload = (await cardResponse.json()) as unknown;
-  return readAgentCardDetails(cardPayload);
 }
 
 function upsertAIMessage(

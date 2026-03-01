@@ -1,12 +1,13 @@
 import { DEFAULT_A2A_BASE_URL } from "~/a2a/client";
+import { readJson } from "~/a2a/http";
+import {
+  ExternalAgentResponseSchema,
+  ListExternalAgentsResponseSchema,
+  OkResponseSchema,
+  type ExternalAgentPayload,
+} from "~/a2a/schemas";
 
-export interface ExternalAgent {
-  agent_id: string;
-  base_url: string;
-  use_legacy_card_path: boolean;
-  created_at: string;
-  updated_at: string;
-}
+export type ExternalAgent = ExternalAgentPayload;
 
 export interface ExternalAgentCreateInput {
   agent_id: string;
@@ -19,25 +20,9 @@ export interface ExternalAgentUpdateInput {
   use_legacy_card_path: boolean;
 }
 
-interface ListExternalAgentsResponse {
-  agents: ExternalAgent[];
-}
-
-interface ExternalAgentResponse {
-  agent: ExternalAgent;
-}
-
-async function readJson<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with HTTP ${response.status}`);
-  }
-  return (await response.json()) as T;
-}
-
 export async function listExternalAgents(): Promise<ExternalAgent[]> {
   const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/external`);
-  const payload = await readJson<ListExternalAgentsResponse>(response);
+  const payload = await readJson(response, ListExternalAgentsResponseSchema);
   return payload.agents;
 }
 
@@ -49,7 +34,7 @@ export async function createExternalAgent(input: ExternalAgentCreateInput): Prom
     },
     body: JSON.stringify(input),
   });
-  const payload = await readJson<ExternalAgentResponse>(response);
+  const payload = await readJson(response, ExternalAgentResponseSchema);
   return payload.agent;
 }
 
@@ -61,7 +46,7 @@ export async function updateExternalAgent(agentId: string, input: ExternalAgentU
     },
     body: JSON.stringify(input),
   });
-  const payload = await readJson<ExternalAgentResponse>(response);
+  const payload = await readJson(response, ExternalAgentResponseSchema);
   return payload.agent;
 }
 
@@ -69,5 +54,5 @@ export async function deleteExternalAgent(agentId: string): Promise<void> {
   const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/external/${agentId}`, {
     method: "DELETE",
   });
-  await readJson<{ ok: boolean }>(response);
+  await readJson(response, OkResponseSchema);
 }

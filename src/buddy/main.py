@@ -1,5 +1,5 @@
 import os
-from buddy.a2a.server import create_app
+from buddy.control_plane.server import create_app
 
 app = create_app()
 

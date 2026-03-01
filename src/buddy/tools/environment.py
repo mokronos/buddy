@@ -1,6 +1,6 @@
 from pydantic_ai import RunContext
 
-from buddy.agent.deps import AgentDeps
+from buddy.runtime.deps import AgentDeps
 
 
 def _format_environment_error(action: str, error: Exception) -> str:

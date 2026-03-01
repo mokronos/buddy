@@ -4,8 +4,9 @@ from typing import cast
 
 from pydantic_ai import Agent
 
-from buddy.a2a.runtime_server import create_runtime_app
-from buddy.agent.config import build_runtime_agents, load_runtime_agent_config
+from buddy.runtime.a2a.server import create_runtime_app
+from buddy.runtime.config import build_runtime_agents
+from buddy.shared.runtime_config import load_runtime_agent_config
 
 runtime_config_path = os.environ.get("BUDDY_AGENT_CONFIG")
 if not runtime_config_path:

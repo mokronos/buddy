@@ -3,6 +3,7 @@ import MarkdownContent from "./MarkdownContent";
 interface AIMessageProps {
   content: string;
   timestamp?: string;
+  streaming?: boolean;
 }
 
 export default function AIMessage(props: AIMessageProps) {
@@ -18,7 +19,11 @@ export default function AIMessage(props: AIMessageProps) {
             <span class="text-xs text-gray-500">{props.timestamp}</span>
           )}
         </div>
-        <MarkdownContent content={props.content} />
+        {props.streaming ? (
+          <div class="text-gray-100 whitespace-pre-wrap break-words">{props.content}</div>
+        ) : (
+          <MarkdownContent content={props.content} />
+        )}
       </div>
     </div>
   );

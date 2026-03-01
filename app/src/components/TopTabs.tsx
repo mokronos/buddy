@@ -1,4 +1,4 @@
-import { useLocation } from "@solidjs/router";
+import { A, useLocation } from "@solidjs/router";
 
 interface TabItem {
   href: string;
@@ -20,7 +20,7 @@ export default function TopTabs() {
         {tabs.map((tab) => {
           const isActive = location.pathname === tab.href;
           return (
-            <a
+            <A
               href={tab.href}
               class={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                 isActive
@@ -29,7 +29,7 @@ export default function TopTabs() {
               }`}
             >
               {tab.label}
-            </a>
+            </A>
           );
         })}
       </nav>

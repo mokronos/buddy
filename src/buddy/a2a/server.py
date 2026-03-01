@@ -11,7 +11,7 @@ from devtools import pprint
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
@@ -492,15 +492,37 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             headers=raw_headers,
             data=body,
             timeout=120,
+            stream=True,
         )
 
         excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
         passthrough_headers = {key: value for key, value in upstream.headers.items() if key.lower() not in excluded}
+
+        content_type = upstream.headers.get("content-type", "")
+        if "text/event-stream" in content_type.lower():
+
+            def stream_content():
+                try:
+                    for chunk in upstream.iter_content(chunk_size=1024):
+                        if chunk:
+                            yield chunk
+                finally:
+                    upstream.close()
+
+            return StreamingResponse(
+                stream_content(),
+                status_code=upstream.status_code,
+                headers=passthrough_headers,
+                media_type=content_type,
+            )
+
+        upstream_content = upstream.content
+        upstream.close()
         return Response(
-            content=upstream.content,
+            content=upstream_content,
             status_code=upstream.status_code,
             headers=passthrough_headers,
-            media_type=upstream.headers.get("content-type"),
+            media_type=content_type or None,
         )
 
     @app.post("/internal/runtime/acquire")

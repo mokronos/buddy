@@ -51,7 +51,7 @@ export default function MessageBox() {
 
     const currentMessages = messages();
     const latestMessage = currentMessages[currentMessages.length - 1];
-    return latestMessage?.type !== "thinking";
+    return !latestMessage || latestMessage.type === "human";
   };
 
   return (
@@ -68,6 +68,7 @@ export default function MessageBox() {
                 <AIMessage
                   content={message.content}
                   timestamp={message.timestamp}
+                  streaming={isSending() && message.id === messages()[messages().length - 1]?.id}
                 />
               </Match>
               <Match when={message.type === 'human'}>

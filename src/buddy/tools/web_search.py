@@ -4,7 +4,8 @@ from dataclasses import dataclass
 import cloudscraper
 import requests
 from bs4 import BeautifulSoup
-from requests.exceptions import ConnectionError, Timeout, RequestException
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import RequestException, Timeout
 
 # your searxng instance
 url = "http://localhost:8888/search"
@@ -26,17 +27,36 @@ def web_search(query: str) -> str:
             timeout=10,
             headers={"User-Agent": "Mozilla/5.0 (compatible; MyBot/1.0)"},
         )
-    except ConnectionError as e:
-        raise ConnectionError(f"Connection failed to SearXNG at {url}. Is it running?") from e
-    except Timeout as e:
-        raise TimeoutError("Request to SearXNG timed out after 10 seconds") from e
-    except RequestException as e:
-        raise RuntimeError("Request to SearXNG failed") from e
+    except RequestsConnectionError:
+        return (
+            "Web search is currently unavailable because the local SearXNG service is unreachable. "
+            "I cannot perform web searches right now."
+        )
+    except Timeout:
+        return (
+            "Web search is currently unavailable because the local SearXNG service timed out. "
+            "I cannot perform web searches right now."
+        )
+    except RequestException:
+        return (
+            "Web search is currently unavailable because the local SearXNG request failed. "
+            "I cannot perform web searches right now."
+        )
 
     if not response.ok:
-        raise RuntimeError(f"SearXNG returned HTTP {response.status_code}: {response.text[:200]}")
+        return (
+            f"Web search is currently unavailable because SearXNG returned HTTP {response.status_code}. "
+            "I cannot perform web searches right now."
+        )
 
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        return (
+            "Web search is currently unavailable because SearXNG returned an invalid response. "
+            "I cannot perform web searches right now."
+        )
+
     results = []
     # results are in data["results"]
     for r in data.get("results", [])[:5]:

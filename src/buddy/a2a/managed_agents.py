@@ -202,6 +202,39 @@ class ManagedAgentManager:
         suffix = path if path.startswith("/") else f"/{path}"
         return f"http://127.0.0.1:{record.host_port}{suffix}"
 
+    def get_agent_logs(self, agent_id: str, tail: int = 200) -> tuple[ManagedAgentRecord, str]:
+        if tail <= 0:
+            raise ValueError("tail must be greater than 0")
+
+        with self._lock:
+            record = self._records.get(agent_id)
+            if record is None:
+                raise ValueError(f"Agent '{agent_id}' does not exist")
+
+            refreshed = self._refresh_status(record)
+            self._records[agent_id] = refreshed
+            self._save_registry()
+
+        if not refreshed.container_id:
+            return refreshed, ""
+
+        try:
+            container = self._docker.containers.get(refreshed.container_id)
+            logs = container.logs(tail=tail, timestamps=True)
+            return refreshed, logs.decode("utf-8", errors="replace")
+        except NotFound:
+            missing = ManagedAgentRecord(**{
+                **asdict(refreshed),
+                "container_id": None,
+                "host_port": None,
+                "status": "missing",
+                "updated_at": self._now(),
+            })
+            with self._lock:
+                self._records[agent_id] = missing
+                self._save_registry()
+            return missing, ""
+
     def _start_container(
         self,
         record: ManagedAgentRecord,

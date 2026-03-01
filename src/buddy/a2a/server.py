@@ -358,6 +358,22 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Managed agent '{agent_id}' not found")
         return JSONResponse({"agent": record.__dict__})
 
+    @app.get("/managed-agents/{agent_id}/logs")
+    async def get_managed_agent_logs(agent_id: str, tail: int = 200) -> JSONResponse:
+        if managed_agent_manager is None:
+            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
+        try:
+            record, logs = managed_agent_manager.get_agent_logs(agent_id, tail=tail)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except Exception as error:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {error}") from error
+
+        return JSONResponse({
+            "agent": record.__dict__,
+            "logs": logs,
+        })
+
     @app.post("/managed-agents")
     async def create_managed_agent(payload: ManagedAgentCreateRequest) -> JSONResponse:
         if managed_agent_manager is None:

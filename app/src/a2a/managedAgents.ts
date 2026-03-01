@@ -30,6 +30,16 @@ interface ManagedAgentResponse {
   agent: ManagedAgent;
 }
 
+interface ManagedAgentLogsResponse {
+  agent: ManagedAgent;
+  logs: string;
+}
+
+export interface ManagedAgentLogs {
+  agent: ManagedAgent;
+  logs: string;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const message = await response.text();
@@ -81,4 +91,10 @@ export async function deleteManagedAgent(agentId: string): Promise<void> {
     method: "DELETE",
   });
   await readJson<{ ok: boolean }>(response);
+}
+
+export async function getManagedAgentLogs(agentId: string, tail: number = 200): Promise<ManagedAgentLogs> {
+  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/managed-agents/${agentId}/logs?tail=${tail}`);
+  const payload = await readJson<ManagedAgentLogsResponse>(response);
+  return payload;
 }

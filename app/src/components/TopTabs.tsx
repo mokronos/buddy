@@ -8,6 +8,7 @@ interface TabItem {
 const tabs: TabItem[] = [
   { href: "/", label: "Chat" },
   { href: "/managed-agents", label: "Manage Agents" },
+  { href: "/agent-logs", label: "Agent Logs" },
 ];
 
 export default function TopTabs() {

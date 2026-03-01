@@ -1,7 +1,6 @@
 import type { MessageSendParams } from "@a2a-js/sdk";
-import { useQuery, useQueryClient } from "@tanstack/solid-query";
+import { useQueryClient } from "@tanstack/solid-query";
 import {
-  createEffect,
   createContext,
   createMemo,
   createSignal,
@@ -429,26 +428,8 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
   };
 
   const queryClient = useQueryClient();
-  const agentsIndexQuery = useQuery(() => ({
-    queryKey: ["agents", "index"],
-    queryFn: fetchAgentsIndex,
-    enabled: false,
-  }));
 
-  const refreshAgents = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: ["agents"] });
-    const result = await agentsIndexQuery.refetch();
-    if (result.error) {
-      throw result.error;
-    }
-  };
-
-  createEffect(() => {
-    const payload = agentsIndexQuery.data;
-    if (!payload) {
-      return;
-    }
-
+  const applyAgentsPayload = (payload: AgentsIndexPayload): void => {
     const requestId = ++refreshRequestId;
     const loadedAgents = payload.agents;
 
@@ -513,7 +494,16 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
       setAgents(loadedAgentsWithDetails);
     })();
-  });
+  };
+
+  const refreshAgents = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: ["agents"] });
+    const payload = await queryClient.fetchQuery({
+      queryKey: ["agents", "index"],
+      queryFn: fetchAgentsIndex,
+    });
+    applyAgentsPayload(payload);
+  };
 
   const setActiveAgentKey = (agentKey: string): void => {
     const selectedAgent = agents().find((agent) => agent.key === agentKey);

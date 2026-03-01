@@ -1,7 +1,7 @@
 from pathlib import Path
 from threading import Lock
 
-from buddy.a2a.managed_agents import ManagedAgentManager, ManagedAgentRecord
+from buddy.control_plane.managed_agents import ManagedAgentManager, ManagedAgentRecord
 
 
 def test_update_agent_config_restarts_running_agent(tmp_path) -> None:

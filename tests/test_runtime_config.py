@@ -1,6 +1,6 @@
 import pytest
 
-from buddy.agent.config import parse_runtime_agent_config_yaml
+from buddy.shared.runtime_config import parse_runtime_agent_config_yaml
 
 
 def test_parse_runtime_config_valid() -> None:

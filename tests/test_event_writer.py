@@ -1,6 +1,6 @@
 from a2a.types import TaskState
 
-from buddy.a2a.event_writer import SessionEventWriter
+from buddy.runtime.a2a.event_writer import SessionEventWriter
 from buddy.session_store import SessionStore
 
 

@@ -1,6 +1,6 @@
 import pytest
 
-from buddy.a2a.validation import normalize_external_base_url, validate_agent_id
+from buddy.control_plane.validation import normalize_external_base_url, validate_agent_id
 
 
 def test_validate_agent_id_accepts_slug() -> None:

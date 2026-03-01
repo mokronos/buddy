@@ -1,6 +1,6 @@
 import pytest
 
-from buddy.a2a.server import _enforce_internal_token_policy
+from buddy.control_plane.server import _enforce_internal_token_policy
 
 
 def test_token_policy_allows_local_without_token(monkeypatch: pytest.MonkeyPatch) -> None:

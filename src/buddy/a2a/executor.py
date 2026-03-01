@@ -42,6 +42,11 @@ class PyAIAgentExecutor(AgentExecutor):
         self.session_store = session_store
         self.environment_manager = environment_manager
 
+    def _environment_owner_id(self, context_id: str) -> str:
+        raw_name = self.agent.name or "agent"
+        safe_name = "".join(ch.lower() if ch.isalnum() else "-" for ch in raw_name).strip("-") or "agent"
+        return f"{safe_name}:{context_id}"
+
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         query = context.get_user_input()
         print("\n\n\n Recieved new task with query: ", query, "\n")
@@ -114,6 +119,7 @@ class PyAIAgentExecutor(AgentExecutor):
                 async with send_stream:
                     deps = AgentDeps(
                         session_id=context_id,
+                        environment_owner_id=self._environment_owner_id(context_id),
                         environment_manager=self.environment_manager,
                     )
                     agent_with_deps = cast(Any, self.agent)

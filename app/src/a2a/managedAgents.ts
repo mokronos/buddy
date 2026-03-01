@@ -9,6 +9,7 @@ export interface ManagedAgent {
   container_id: string | null;
   host_port: number | null;
   status: string;
+  last_error: string | null;
   created_at: string;
   updated_at: string;
 }

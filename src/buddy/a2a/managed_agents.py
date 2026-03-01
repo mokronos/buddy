@@ -1,9 +1,11 @@
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 from time import sleep
+from urllib.parse import urlparse
 
 import docker
 import requests
@@ -22,6 +24,7 @@ class ManagedAgentRecord:
     container_id: str | None
     host_port: int | None
     status: str
+    last_error: str | None
     created_at: str
     updated_at: str
 
@@ -78,13 +81,26 @@ class ManagedAgentManager:
                 container_id=None,
                 host_port=None,
                 status="created",
+                last_error=None,
                 created_at=now,
                 updated_at=now,
             )
             self._records[agent_id] = record
             self._save_registry()
 
-            started = self._start_container(record, extra_env=extra_env, command=command)
+            try:
+                started = self._start_container(record, extra_env=extra_env, command=command)
+            except Exception as error:
+                failed = ManagedAgentRecord(**{
+                    **asdict(record),
+                    "status": "failed",
+                    "last_error": str(error),
+                    "updated_at": self._now(),
+                })
+                self._records[agent_id] = failed
+                self._save_registry()
+                raise
+
             self._records[agent_id] = started
             self._save_registry()
             return started
@@ -113,11 +129,23 @@ class ManagedAgentManager:
                 except NotFound:
                     pass
 
-            started = self._start_container(
-                record,
-                extra_env=extra_env or {},
-                command=command,
-            )
+            try:
+                started = self._start_container(
+                    record,
+                    extra_env=extra_env or {},
+                    command=command,
+                )
+            except Exception as error:
+                failed = ManagedAgentRecord(**{
+                    **asdict(record),
+                    "status": "failed",
+                    "last_error": str(error),
+                    "updated_at": self._now(),
+                })
+                self._records[agent_id] = failed
+                self._save_registry()
+                raise
+
             self._records[agent_id] = started
             self._save_registry()
             return started
@@ -139,6 +167,7 @@ class ManagedAgentManager:
             updated = ManagedAgentRecord(**{
                 **asdict(record),
                 "status": "stopped",
+                "last_error": None,
                 "updated_at": self._now(),
             })
             self._records[agent_id] = updated
@@ -180,17 +209,44 @@ class ManagedAgentManager:
         extra_env: dict[str, str],
         command: list[str] | None,
     ) -> ManagedAgentRecord:
+        inherited_env = {
+            key: value
+            for key in [
+                "OPENROUTER_API_KEY",
+                "OPENAI_API_KEY",
+                "LANGFUSE_PUBLIC_KEY",
+                "LANGFUSE_SECRET_KEY",
+                "LANGFUSE_HOST",
+                "BUDDY_RUNTIME_API_BASE_URL",
+                "BUDDY_INTERNAL_RUNTIME_TOKEN",
+            ]
+            if (value := os.environ.get(key))
+        }
         env = {
             "BUDDY_AGENT_CONFIG": record.config_mount_path,
+            **inherited_env,
             **extra_env,
         }
+        if "BUDDY_RUNTIME_API_BASE_URL" not in env:
+            control_plane_port = os.environ.get("PORT", "10001")
+            env["BUDDY_RUNTIME_API_BASE_URL"] = f"http://host.docker.internal:{control_plane_port}"
+        langfuse_host = env.get("LANGFUSE_HOST")
+        if isinstance(langfuse_host, str):
+            parsed = urlparse(langfuse_host)
+            if parsed.hostname in {"localhost", "127.0.0.1"}:
+                port_part = f":{parsed.port}" if parsed.port else ""
+                path_part = parsed.path or ""
+                env["LANGFUSE_HOST"] = f"{parsed.scheme}://host.docker.internal{port_part}{path_part}"
         port_key = f"{record.container_port}/tcp"
+        container_name = self._next_agent_container_name(record.agent_id)
         container = self._docker.containers.run(
             record.image,
             detach=True,
+            name=container_name,
             command=command,
             environment=env,
             ports={port_key: ("127.0.0.1", 0)},
+            extra_hosts={"host.docker.internal": "host-gateway"},
             volumes={record.config_path: {"bind": record.config_mount_path, "mode": "ro"}},
             labels={
                 "buddy.managed_agent": "true",
@@ -216,6 +272,7 @@ class ManagedAgentManager:
             "container_id": container.id,
             "host_port": host_port,
             "status": container.status,
+            "last_error": None,
             "updated_at": self._now(),
         })
 
@@ -231,6 +288,7 @@ class ManagedAgentManager:
                 "container_id": None,
                 "host_port": None,
                 "status": "missing",
+                "last_error": None,
                 "updated_at": self._now(),
             })
 
@@ -239,6 +297,7 @@ class ManagedAgentManager:
             return ManagedAgentRecord(**{
                 **asdict(record),
                 "status": status,
+                "last_error": None,
                 "updated_at": self._now(),
             })
 
@@ -250,6 +309,7 @@ class ManagedAgentManager:
             **asdict(record),
             "host_port": host_port,
             "status": status,
+            "last_error": None,
             "updated_at": self._now(),
         })
 
@@ -280,23 +340,46 @@ class ManagedAgentManager:
         self._records = loaded
 
     def _wait_for_a2a_ready(self, agent_id: str, host_port: int) -> None:
-        url = f"http://127.0.0.1:{host_port}/.well-known/agent-card.json"
+        base_url = f"http://127.0.0.1:{host_port}"
         delay = 0.2
         max_attempts = 8
         for _ in range(max_attempts):
             try:
-                response = requests.get(url, timeout=2)
-                if response.ok:
+                agents_response = requests.get(f"{base_url}/agents", timeout=2)
+                if agents_response.ok:
+                    payload = agents_response.json()
+                    if isinstance(payload, dict) and isinstance(payload.get("agents"), list):
+                        return
+
+                fallback_response = requests.get(f"{base_url}/.well-known/agent-card.json", timeout=2)
+                if fallback_response.ok:
                     return
             except requests.RequestException:
                 pass
             sleep(delay)
             delay = min(delay * 2, 2.0)
-        raise RuntimeError(f"Managed agent '{agent_id}' failed readiness check at {url}")
+        raise RuntimeError(f"Managed agent '{agent_id}' failed readiness check at {base_url}/agents")
 
     def _save_registry(self) -> None:
         payload = {agent_id: asdict(record) for agent_id, record in self._records.items()}
         self._registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def _next_agent_container_name(self, agent_id: str) -> str:
+        base = f"buddy-agent-{self._slug(agent_id)}"
+        candidate = base
+        index = 1
+        while True:
+            try:
+                self._docker.containers.get(candidate)
+            except NotFound:
+                return candidate
+            index += 1
+            candidate = f"{base}-{index}"
+
+    @staticmethod
+    def _slug(value: str) -> str:
+        slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in value).strip("-")
+        return slug or "agent"
 
     @staticmethod
     def _now() -> str:

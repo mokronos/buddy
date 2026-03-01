@@ -176,6 +176,45 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         if provided != internal_runtime_token:
             raise HTTPException(status_code=401, detail="Unauthorized internal runtime request")
 
+    def _fetch_managed_runtime_routes(agent_id: str) -> tuple[str, str]:
+        target_base = managed_agent_manager.resolve_target(agent_id, "/")
+        try:
+            response = requests.get(f"{target_base.rstrip('/')}/agents", timeout=5)
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as error:
+            raise HTTPException(
+                status_code=502, detail=f"Managed agent '{agent_id}' is unreachable: {error}"
+            ) from error
+
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' returned invalid /agents payload")
+
+        agents_payload = payload.get("agents")
+        default_key = payload.get("defaultAgentKey")
+        if not isinstance(agents_payload, list) or not agents_payload:
+            raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' reported no available agents")
+
+        selected = None
+        for entry in agents_payload:
+            if not isinstance(entry, dict):
+                continue
+            key = entry.get("key")
+            if isinstance(default_key, str) and key == default_key:
+                selected = entry
+                break
+        if selected is None:
+            selected = agents_payload[0] if isinstance(agents_payload[0], dict) else None
+        if selected is None:
+            raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' has invalid agent metadata")
+
+        mount_path = selected.get("mountPath")
+        card_path = selected.get("agentCardPath")
+        if not isinstance(mount_path, str) or not isinstance(card_path, str):
+            raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' missing mount/card paths")
+
+        return mount_path, card_path
+
     @app.on_event("startup")
     async def _startup() -> None:
         if local_environment_manager is not None:
@@ -348,7 +387,29 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         if managed_agent_manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
-            target_url = managed_agent_manager.resolve_target(agent_id, f"/{proxy_path}" if proxy_path else "/")
+            mount_path, card_path = _fetch_managed_runtime_routes(agent_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+        proxy_root = f"{base_url}/a2a/managed/{agent_id}"
+        if proxy_path == ".well-known/agent-card.json":
+            upstream_card_url = managed_agent_manager.resolve_target(agent_id, card_path)
+            try:
+                card_response = requests.get(upstream_card_url, timeout=15)
+                card_response.raise_for_status()
+                card = card_response.json()
+            except requests.RequestException as error:
+                raise HTTPException(status_code=502, detail=f"Failed to fetch managed agent card: {error}") from error
+
+            if isinstance(card, dict):
+                card["url"] = proxy_root
+            return JSONResponse(card)
+
+        relative_path = proxy_path.strip("/")
+        upstream_path = f"{mount_path.rstrip('/')}/{relative_path}" if relative_path else mount_path
+
+        try:
+            target_url = managed_agent_manager.resolve_target(agent_id, upstream_path)
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
 

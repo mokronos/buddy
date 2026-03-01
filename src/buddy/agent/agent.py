@@ -1,3 +1,5 @@
+import os
+
 from dotenv import load_dotenv
 from langfuse import Langfuse
 from pydantic_ai import Agent
@@ -15,12 +17,32 @@ from buddy.tools.web_search import fetch_web_page, web_search
 
 load_dotenv()
 
-langfuse = Langfuse(blocked_instrumentation_scopes=["a2a-python-sdk"])
 
-if not langfuse.auth_check():
+def _raise_langfuse_auth_error() -> None:
     raise RuntimeError("Langfuse authentication failed. Check credentials and host.")
 
-print("Langfuse client is authenticated and ready!")
+
+def _is_langfuse_ready() -> bool:
+    require_langfuse = os.environ.get("BUDDY_REQUIRE_LANGFUSE", "false").lower() == "true"
+
+    try:
+        langfuse = Langfuse(blocked_instrumentation_scopes=["a2a-python-sdk"])
+        if langfuse.auth_check():
+            print("Langfuse client is authenticated and ready!")
+            return True
+        if require_langfuse:
+            _raise_langfuse_auth_error()
+        else:
+            print("Langfuse auth failed; continuing with instrumentation disabled.")
+            return False
+    except Exception as error:
+        if require_langfuse:
+            raise
+        print(f"Langfuse unavailable ({error}); continuing with instrumentation disabled.")
+        return False
+
+
+langfuse_ready = _is_langfuse_ready()
 
 web_tools = FunctionToolset(
     tools=[
@@ -48,7 +70,7 @@ environment_tools = FunctionToolset(
 )
 
 
-def create_agent(name: str, instructions: str) -> Agent:
+def create_agent(name: str, instructions: str) -> Agent[AgentDeps, str]:
     return Agent(
         model="openrouter:openrouter/free",
         name=name,
@@ -59,7 +81,7 @@ def create_agent(name: str, instructions: str) -> Agent:
         # model="google-gla:gemini-2.5-pro",
         # model="google-gla:gemini-2.5-flash-lite",
         toolsets=[web_tools, todo_tools, environment_tools],
-        instrument=True,
+        instrument=langfuse_ready,
     )
 
 

@@ -38,6 +38,7 @@ class EnvironmentManager:
         self._lock = Lock()
         self._leases: dict[str, str] = {}
         self._idle: deque[str] = deque()
+        self._owner_indices: dict[str, int] = {}
 
     def start(self) -> None:
         self._ensure_image_exists()
@@ -71,6 +72,7 @@ class EnvironmentManager:
                 return EnvironmentLease(owner_id=owner_id, container_id=container_id)
 
             container = self._acquire_idle_container()
+            self._rename_container_for_owner(container, owner_id)
             container_id = self._container_id(container)
             self._leases[owner_id] = container_id
             return EnvironmentLease(owner_id=owner_id, container_id=container_id)
@@ -224,9 +226,32 @@ class EnvironmentManager:
 
         return posixpath.normpath(f"{self.workspace_dir}/{normalized}")
 
+    def _rename_container_for_owner(self, container: Container, owner_id: str) -> None:
+        owner_name = owner_id.split(":", 1)[0]
+        safe_owner = self._slug(owner_name)
+        next_index = self._owner_indices.get(safe_owner, 0) + 1
+
+        while True:
+            candidate = f"buddy-env-{safe_owner}-{next_index}"
+            try:
+                self._docker.containers.get(candidate)
+                next_index += 1
+                continue
+            except NotFound:
+                pass
+
+            container.rename(candidate)
+            self._owner_indices[safe_owner] = next_index
+            return
+
     @staticmethod
     def _container_id(container: Container) -> str:
         container_id = container.id
         if container_id is None:
             raise RuntimeError("Container id is missing")
         return container_id
+
+    @staticmethod
+    def _slug(value: str) -> str:
+        slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in value).strip("-")
+        return slug or "agent"

@@ -9,12 +9,6 @@ export default function Sidebar() {
       <div>
         <p class="text-xs uppercase tracking-wide text-zinc-400">Connected Agent</p>
         <p class="mt-1 text-sm font-medium text-zinc-100">{activeAgentName()}</p>
-        <a
-          href="/managed-agents"
-          class="mt-3 inline-flex rounded-md border border-zinc-600 px-3 py-1 text-xs font-medium text-zinc-200 hover:border-zinc-400"
-        >
-          Manage Agents
-        </a>
       </div>
 
       <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">

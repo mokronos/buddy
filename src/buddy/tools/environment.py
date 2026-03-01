@@ -16,7 +16,7 @@ def _format_environment_error(action: str, error: Exception) -> str:
 def environment_exec(ctx: RunContext[AgentDeps], command: str, timeout_s: int = 30) -> str:
     """Run a shell command inside the agent's environment container."""
     try:
-        result = ctx.deps.environment_manager.exec(ctx.deps.session_id, command, timeout_s=timeout_s)
+        result = ctx.deps.environment_manager.exec(ctx.deps.environment_owner_id, command, timeout_s=timeout_s)
     except Exception as error:
         return _format_environment_error("run command", error)
 
@@ -35,7 +35,7 @@ def environment_exec(ctx: RunContext[AgentDeps], command: str, timeout_s: int = 
 def environment_read_file(ctx: RunContext[AgentDeps], path: str) -> str:
     """Read a UTF-8 text file from /workspace inside the environment container."""
     try:
-        return ctx.deps.environment_manager.read_file(ctx.deps.session_id, path)
+        return ctx.deps.environment_manager.read_file(ctx.deps.environment_owner_id, path)
     except Exception as error:
         return _format_environment_error("read file", error)
 
@@ -43,7 +43,7 @@ def environment_read_file(ctx: RunContext[AgentDeps], path: str) -> str:
 def environment_write_file(ctx: RunContext[AgentDeps], path: str, content: str) -> str:
     """Write a UTF-8 text file to /workspace inside the environment container."""
     try:
-        ctx.deps.environment_manager.write_file(ctx.deps.session_id, path, content)
+        ctx.deps.environment_manager.write_file(ctx.deps.environment_owner_id, path, content)
     except Exception as error:
         return _format_environment_error("write file", error)
     else:
@@ -60,7 +60,7 @@ def environment_patch_file(
     """Replace text in a file inside the environment container."""
     try:
         replaced = ctx.deps.environment_manager.patch_file(
-            owner_id=ctx.deps.session_id,
+            owner_id=ctx.deps.environment_owner_id,
             path=path,
             old_text=old_text,
             new_text=new_text,

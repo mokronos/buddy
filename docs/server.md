@@ -7,7 +7,7 @@ Buddy runs a FastAPI control plane. It exposes domain-style APIs for the UI and 
 
 - Domain APIs are available under `/api/v1/...`.
 - Backward-compatible aliases still exist for `/sessions` and `/agents`.
-- A2A endpoints are mounted per agent (`/a2a/<agent-key>`) and proxied for managed/external agents.
+- A2A endpoints are exposed via managed/external agent proxies.
 
 Session history, events, and chat messages persist in `sessions.db`.
 
@@ -31,7 +31,6 @@ Managed-agent config is YAML and is validated before create/update.
 ## A2A Boundary
 Raw A2A JSON-RPC/SSE stays at the agent boundary:
 
-- In-process agents: `/a2a/<agent-key>`
 - Managed container proxies: `/a2a/managed/{agent_id}`
 - External agent proxies: `/a2a/external/{agent_id}`
 
@@ -59,5 +58,5 @@ Use header `x-buddy-internal-token` when `BUDDY_INTERNAL_RUNTIME_TOKEN` is confi
 ---
 ## Configure
 - `BUDDY_PUBLIC_URL` controls advertised/proxy base URLs.
-- `BUDDY_RUNTIME_API_BASE_URL` switches server/runtime split mode.
+- `BUDDY_RUNTIME_API_BASE_URL` is used by runtime containers to call control-plane internal runtime APIs.
 - `BUDDY_ALLOW_PRIVATE_EXTERNAL_URLS` controls whether private/loopback external URLs are allowed.

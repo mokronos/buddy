@@ -674,8 +674,17 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     };
 
     try {
-      const selectedAgent = agents().find((agent) => agent.key === targetAgentKey);
-      const agentCardPath = selectedAgent?.agentCardPath ?? "/a2a/buddy/.well-known/agent-card.json";
+      let selectedAgent = agents().find((agent) => agent.key === targetAgentKey);
+      if (!selectedAgent) {
+        await refreshAgents();
+        selectedAgent = agents().find((agent) => agent.key === activeAgentKey());
+      }
+
+      if (!selectedAgent) {
+        throw new Error("No A2A agents available. Start a managed agent first.");
+      }
+
+      const agentCardPath = selectedAgent.agentCardPath;
       const a2aClient = createA2AClient({
         agentCardPath,
       });

@@ -2,17 +2,11 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
-from a2a.server.apps import A2AFastAPIApplication
-from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore
-from a2a.types import AgentCapabilities, AgentCard
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic_ai import Agent
 from starlette.concurrency import run_in_threadpool
 
-from buddy.a2a.executor import PyAIAgentExecutor
 from buddy.a2a.external_agents import ExternalAgentManager
 from buddy.a2a.managed_agents import ManagedAgentManager
 from buddy.a2a.routes_agents import build_agents_router
@@ -21,8 +15,6 @@ from buddy.a2a.routes_runtime import build_runtime_router
 from buddy.a2a.routes_sessions import build_sessions_router
 from buddy.a2a.server_state import ServerState
 from buddy.environment.manager import EnvironmentManager
-from buddy.environment.runtime import EnvironmentRuntime
-from buddy.environment.runtime_api import RuntimeAPIEnvironmentManager
 from buddy.session_store import SessionStore
 
 load_dotenv()
@@ -68,46 +60,6 @@ a2a:
 """
 
 
-def _create_agent_card(name: str, url: str) -> AgentCard:
-    return AgentCard(
-        name=name,
-        description=name,
-        url=url,
-        capabilities=AgentCapabilities(
-            streaming=True,
-        ),
-        default_input_modes=["text"],
-        default_output_modes=["text"],
-        skills=[],
-        version="0.0.1",
-    )
-
-
-def _create_a2a_sub_app(
-    agent: Agent,
-    card_name: str,
-    card_url: str,
-    manager: EnvironmentRuntime,
-) -> FastAPI:
-    request_handler = DefaultRequestHandler(
-        agent_executor=PyAIAgentExecutor(
-            agent=agent,
-            session_store=session_store,
-            environment_manager=manager,
-        ),
-        task_store=InMemoryTaskStore(),
-    )
-
-    agent_card = _create_agent_card(card_name, card_url)
-    a2a_app = A2AFastAPIApplication(agent_card=agent_card, http_handler=request_handler)
-
-    return a2a_app.build(
-        agent_card_url="/.well-known/agent-card.json",
-        rpc_url="/",
-        extended_agent_card_url="/agent/authenticatedExtendedCard",
-    )
-
-
 def _is_local_or_dev_mode(current_base_url: str) -> bool:
     env_name = os.environ.get("BUDDY_ENV", "").strip().lower()
     if env_name in {"dev", "development", "local", "test"}:
@@ -136,7 +88,7 @@ def _enforce_internal_token_policy(current_base_url: str, token: str | None) -> 
     )
 
 
-def create_app(agents: dict[str, Agent]) -> FastAPI:
+def create_app() -> FastAPI:
     app = FastAPI()
     runtime_api_base_url = os.environ.get("BUDDY_RUNTIME_API_BASE_URL")
     internal_runtime_token = os.environ.get("BUDDY_INTERNAL_RUNTIME_TOKEN")
@@ -145,10 +97,6 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
     external_agent_manager = ExternalAgentManager()
 
     if runtime_api_base_url:
-        agent_environment_runtime = RuntimeAPIEnvironmentManager(
-            base_url=runtime_api_base_url,
-            token=internal_runtime_token,
-        )
         local_environment_manager: EnvironmentManager | None = None
         managed_agent_manager: ManagedAgentManager | None = None
     else:
@@ -156,32 +104,10 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             image_ref=os.environ.get("BUDDY_ENV_IMAGE", "environ:latest"),
             warm_containers=_int_env("BUDDY_ENV_WARM_CONTAINERS", 1),
         )
-        agent_environment_runtime = local_environment_manager
         managed_agent_manager = ManagedAgentManager()
 
     agent_index: list[dict[str, str]] = []
-    for agent_key, agent in agents.items():
-        mount_path = f"/a2a/{agent_key}"
-        card_url = f"{base_url}{mount_path}"
-        card_name = agent.name or f"buddy-{agent_key}"
-        sub_app = _create_a2a_sub_app(
-            agent=agent,
-            card_name=card_name,
-            card_url=card_url,
-            manager=agent_environment_runtime,
-        )
-        app.mount(mount_path, sub_app)
-        agent_index.append({
-            "key": agent_key,
-            "name": card_name,
-            "mountPath": mount_path,
-            "agentCardPath": f"{mount_path}/.well-known/agent-card.json",
-            "url": card_url,
-        })
-
-    default_agent_key = "buddy" if any(item["key"] == "buddy" for item in agent_index) else None
-    if default_agent_key is None and agent_index:
-        default_agent_key = agent_index[0]["key"]
+    default_agent_key = None
 
     app.add_middleware(
         CORSMiddleware,

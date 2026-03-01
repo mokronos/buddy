@@ -30,6 +30,39 @@ a2a:
   port: 10001
 `;
 
+function syncAgentIdInConfig(configYaml: string, agentId: string): string {
+  const lines = configYaml.split(/\r?\n/);
+  let inAgentSection = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (!inAgentSection) {
+      if (trimmed === "agent:") {
+        inAgentSection = true;
+      }
+      continue;
+    }
+
+    if (trimmed.length === 0) {
+      continue;
+    }
+
+    if (!line.startsWith(" ") && !line.startsWith("\t")) {
+      break;
+    }
+
+    const idMatch = line.match(/^(\s*)id:\s*.*$/);
+    if (idMatch) {
+      lines[index] = `${idMatch[1]}id: ${agentId}`;
+      return lines.join("\n");
+    }
+  }
+
+  return configYaml;
+}
+
 export default function ManagedAgentsPage() {
   const { refreshAgents } = useChat();
   const managedAgentsQuery = useQuery(() => ({
@@ -113,11 +146,16 @@ export default function ManagedAgentsPage() {
       return;
     }
 
+    const syncedConfigYaml = syncAgentIdInConfig(configYaml(), trimmedAgentId);
+    if (syncedConfigYaml !== configYaml()) {
+      setConfigYaml(syncedConfigYaml);
+    }
+
     try {
       await createManagedMutation.mutateAsync({
         agent_id: trimmedAgentId,
         image: image().trim(),
-        config_yaml: configYaml(),
+        config_yaml: syncedConfigYaml,
         container_port: parsedContainerPort,
         config_mount_path: configMountPath().trim(),
       });

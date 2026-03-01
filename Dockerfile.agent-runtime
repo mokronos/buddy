@@ -15,4 +15,4 @@ RUN uv sync --frozen
 
 ENV PORT=10001
 
-CMD ["uv", "run", "src/buddy/main.py"]
+CMD ["uv", "run", "src/buddy/runtime/main.py"]

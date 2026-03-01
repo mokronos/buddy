@@ -1,0 +1,22 @@
+import os
+from pathlib import Path
+from typing import cast
+
+from pydantic_ai import Agent
+
+from buddy.a2a.runtime_server import create_runtime_app
+from buddy.agent.config import build_runtime_agents, load_runtime_agent_config
+
+runtime_config_path = os.environ.get("BUDDY_AGENT_CONFIG")
+if not runtime_config_path:
+    raise RuntimeError("BUDDY_AGENT_CONFIG is required for runtime agent server")
+
+runtime_config = load_runtime_agent_config(Path(runtime_config_path))
+runtime_agents = build_runtime_agents(runtime_config)
+app = create_runtime_app(cast(dict[str, Agent], runtime_agents))
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=10001)

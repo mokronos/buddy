@@ -11,7 +11,7 @@ export const AgentEndpointSchema = z.object({
 });
 
 export const AgentsIndexResponseSchema = z.object({
-  defaultAgentKey: z.string().optional(),
+  defaultAgentKey: z.string().nullable().optional(),
   agents: z.array(AgentEndpointSchema),
 });
 

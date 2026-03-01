@@ -4,7 +4,6 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_ai import Agent
 
-from buddy.agent.agent import create_agent
 from buddy.agent.deps import AgentDeps
 
 
@@ -77,6 +76,8 @@ def load_runtime_agent_config(config_path: Path) -> RuntimeAgentConfig:
 
 
 def build_runtime_agents(config: RuntimeAgentConfig) -> dict[str, Agent[AgentDeps, str]]:
+    from buddy.agent.agent import create_agent
+
     agent = create_agent(
         name=config.agent.name,
         instructions=config.agent.instructions,

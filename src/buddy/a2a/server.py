@@ -261,6 +261,13 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
+        if managed_agent_manager is not None:
+            for record in managed_agent_manager.list_agents():
+                if record.container_id and record.status == "running":
+                    try:
+                        managed_agent_manager.stop_agent(record.agent_id)
+                    except Exception as error:
+                        print(f"Failed to stop managed agent '{record.agent_id}' during shutdown: {error}")
         if local_environment_manager is not None:
             local_environment_manager.stop()
 

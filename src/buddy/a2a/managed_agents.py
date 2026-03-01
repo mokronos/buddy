@@ -250,6 +250,7 @@ class ManagedAgentManager:
                 "LANGFUSE_PUBLIC_KEY",
                 "LANGFUSE_SECRET_KEY",
                 "LANGFUSE_HOST",
+                "LANGFUSE_BASE_URL",
                 "BUDDY_RUNTIME_API_BASE_URL",
                 "BUDDY_INTERNAL_RUNTIME_TOKEN",
             ]
@@ -260,44 +261,65 @@ class ManagedAgentManager:
             **inherited_env,
             **extra_env,
         }
+        if "LANGFUSE_HOST" not in env and env.get("LANGFUSE_PUBLIC_KEY") and env.get("LANGFUSE_SECRET_KEY"):
+            env["LANGFUSE_HOST"] = os.environ.get("BUDDY_LANGFUSE_HOST", "http://host.docker.internal:3000")
+        if "LANGFUSE_BASE_URL" not in env and isinstance(env.get("LANGFUSE_HOST"), str):
+            env["LANGFUSE_BASE_URL"] = env["LANGFUSE_HOST"]
         if "BUDDY_RUNTIME_API_BASE_URL" not in env:
             control_plane_port = os.environ.get("PORT", "10001")
             env["BUDDY_RUNTIME_API_BASE_URL"] = f"http://host.docker.internal:{control_plane_port}"
-        langfuse_host = env.get("LANGFUSE_HOST")
-        if isinstance(langfuse_host, str):
-            parsed = urlparse(langfuse_host)
-            if parsed.hostname in {"localhost", "127.0.0.1"}:
-                port_part = f":{parsed.port}" if parsed.port else ""
-                path_part = parsed.path or ""
-                env["LANGFUSE_HOST"] = f"{parsed.scheme}://host.docker.internal{port_part}{path_part}"
+        for key in ("LANGFUSE_HOST", "LANGFUSE_BASE_URL"):
+            raw_value = env.get(key)
+            if not isinstance(raw_value, str):
+                continue
+            parsed = urlparse(raw_value)
+            if parsed.hostname not in {"localhost", "127.0.0.1"}:
+                continue
+            port_part = f":{parsed.port}" if parsed.port else ""
+            path_part = parsed.path or ""
+            env[key] = f"{parsed.scheme}://host.docker.internal{port_part}{path_part}"
+
+        self._prune_stale_agent_containers(record.agent_id)
+
         port_key = f"{record.container_port}/tcp"
-        container_name = self._next_agent_container_name(record.agent_id)
-        container = self._docker.containers.run(
-            record.image,
-            detach=True,
-            name=container_name,
-            command=command,
-            environment=env,
-            ports={port_key: ("127.0.0.1", 0)},
-            extra_hosts={"host.docker.internal": "host-gateway"},
-            volumes={record.config_path: {"bind": record.config_mount_path, "mode": "ro"}},
-            labels={
-                "buddy.managed_agent": "true",
-                "buddy.agent_id": record.agent_id,
-            },
-        )
+        container_name = self._agent_container_name(record.agent_id)
+        created_container = False
+        try:
+            container = self._docker.containers.get(container_name)
+            container.reload()
+            if container.status != "running":
+                container.start()
+        except NotFound:
+            container = self._docker.containers.run(
+                record.image,
+                detach=True,
+                name=container_name,
+                command=command,
+                environment=env,
+                ports={port_key: ("127.0.0.1", 0)},
+                extra_hosts={"host.docker.internal": "host-gateway"},
+                volumes={record.config_path: {"bind": record.config_mount_path, "mode": "ro"}},
+                labels={
+                    "buddy.managed_agent": "true",
+                    "buddy.agent_id": record.agent_id,
+                },
+            )
+            created_container = True
+
         container.reload()
         ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
         bindings = ports.get(port_key)
         if not bindings:
-            container.remove(force=True)
+            if created_container:
+                container.remove(force=True)
             raise RuntimeError(f"Container for '{record.agent_id}' did not expose port {record.container_port}")
         host_port = int(bindings[0]["HostPort"])
 
         try:
             self._wait_for_a2a_ready(record.agent_id, host_port)
         except Exception as error:
-            container.remove(force=True)
+            if created_container:
+                container.remove(force=True)
             raise RuntimeError(f"Managed agent '{record.agent_id}' failed to become ready: {error}") from error
 
         return ManagedAgentRecord(**{
@@ -375,7 +397,7 @@ class ManagedAgentManager:
     def _wait_for_a2a_ready(self, agent_id: str, host_port: int) -> None:
         base_url = f"http://127.0.0.1:{host_port}"
         delay = 0.2
-        max_attempts = 8
+        max_attempts = 30
         for _ in range(max_attempts):
             try:
                 agents_response = requests.get(f"{base_url}/agents", timeout=2)
@@ -397,17 +419,22 @@ class ManagedAgentManager:
         payload = {agent_id: asdict(record) for agent_id, record in self._records.items()}
         self._registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    def _next_agent_container_name(self, agent_id: str) -> str:
-        base = f"buddy-agent-{self._slug(agent_id)}"
-        candidate = base
-        index = 1
-        while True:
-            try:
-                self._docker.containers.get(candidate)
-            except NotFound:
-                return candidate
-            index += 1
-            candidate = f"{base}-{index}"
+    def _agent_container_name(self, agent_id: str) -> str:
+        return f"buddy-agent-{self._slug(agent_id)}"
+
+    def _prune_stale_agent_containers(self, agent_id: str) -> None:
+        canonical_name = self._agent_container_name(agent_id)
+        managed_containers = self._docker.containers.list(
+            all=True,
+            filters={"label": ["buddy.managed_agent=true", f"buddy.agent_id={agent_id}"]},
+        )
+        for container in managed_containers:
+            container.reload()
+            if container.name == canonical_name:
+                continue
+            if container.status == "running":
+                continue
+            container.remove(force=True)
 
     @staticmethod
     def _slug(value: str) -> str:

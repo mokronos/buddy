@@ -4,6 +4,7 @@ import Chat from "~/components/Chat";
 import MessageBox from "~/components/MessageBox";
 import InputBox from "~/components/InputBox";
 import TopTabs from "~/components/TopTabs";
+import TaskTabs from "~/components/TaskTabs";
 
 export default function Home() {
   return (
@@ -12,6 +13,7 @@ export default function Home() {
       <Container>
         <Sidebar />
         <Chat>
+          <TaskTabs />
           <MessageBox />
           <InputBox />
         </Chat>

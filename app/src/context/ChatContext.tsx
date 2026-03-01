@@ -31,6 +31,10 @@ interface ChatContextValue {
   activeAgentKey: Accessor<string>;
   activeAgentName: Accessor<string>;
   setActiveAgentKey: (agentKey: string) => void;
+  tasks: Accessor<{ id: string; label: string; isSending: boolean }[]>;
+  activeTaskId: Accessor<string>;
+  setActiveTaskId: (taskId: string) => void;
+  createTask: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue>();
@@ -128,13 +132,32 @@ interface AgentConversationState {
   messages: Message[];
   isSending: boolean;
   contextId: string | null;
+  label: string;
 }
 
-function emptyConversation(): AgentConversationState {
+interface AgentWorkspaceState {
+  tasks: Record<string, AgentConversationState>;
+  taskOrder: string[];
+  nextTaskNumber: number;
+}
+
+function emptyConversation(label: string, messages: Message[] = []): AgentConversationState {
   return {
-    messages: [],
+    messages,
     isSending: false,
     contextId: null,
+    label,
+  };
+}
+
+function createWorkspace(initialMessages: Message[] = []): AgentWorkspaceState {
+  const defaultTaskId = "task-1";
+  return {
+    tasks: {
+      [defaultTaskId]: emptyConversation("Task 1", initialMessages),
+    },
+    taskOrder: [defaultTaskId],
+    nextTaskNumber: 2,
   };
 }
 
@@ -262,12 +285,11 @@ function upsertThinkingMessage(
 }
 
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
-  const [conversations, setConversations] = createSignal<Record<string, AgentConversationState>>({
-    buddy: {
-      messages: props.messages || [],
-      isSending: false,
-      contextId: null,
-    },
+  const [workspaces, setWorkspaces] = createSignal<Record<string, AgentWorkspaceState>>({
+    buddy: createWorkspace(props.messages || []),
+  });
+  const [activeTaskIds, setActiveTaskIds] = createSignal<Record<string, string>>({
+    buddy: "task-1",
   });
   const [agents, setAgents] = createSignal<AgentEndpoint[]>([]);
   const [activeAgentKey, setActiveAgentKeySignal] = createSignal("buddy");
@@ -275,21 +297,62 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
   const messages = createMemo(() => {
     const activeKey = activeAgentKey();
-    return conversations()[activeKey]?.messages ?? [];
+    const workspace = workspaces()[activeKey];
+    if (!workspace) {
+      return [];
+    }
+    const selectedTaskId = activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
+    return workspace.tasks[selectedTaskId]?.messages ?? [];
   });
 
   const isSending = createMemo(() => {
     const activeKey = activeAgentKey();
-    return conversations()[activeKey]?.isSending ?? false;
+    const workspace = workspaces()[activeKey];
+    if (!workspace) {
+      return false;
+    }
+    const selectedTaskId = activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
+    return workspace.tasks[selectedTaskId]?.isSending ?? false;
   });
 
-  const updateConversation = (
+  const activeTaskId = createMemo(() => {
+    const activeKey = activeAgentKey();
+    const workspace = workspaces()[activeKey];
+    if (!workspace) {
+      return "";
+    }
+    return activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
+  });
+
+  const tasks = createMemo(() => {
+    const activeKey = activeAgentKey();
+    const workspace = workspaces()[activeKey];
+    if (!workspace) {
+      return [];
+    }
+
+    return workspace.taskOrder
+      .map((taskId) => {
+        const task = workspace.tasks[taskId];
+        if (!task) {
+          return null;
+        }
+        return {
+          id: taskId,
+          label: task.label,
+          isSending: task.isSending,
+        };
+      })
+      .filter((task): task is { id: string; label: string; isSending: boolean } => task !== null);
+  });
+
+  const updateWorkspace = (
     agentKey: string,
-    updater: (current: AgentConversationState) => AgentConversationState,
-  ): AgentConversationState => {
-    let nextValue = emptyConversation();
-    setConversations((current) => {
-      const existing = current[agentKey] ?? emptyConversation();
+    updater: (current: AgentWorkspaceState) => AgentWorkspaceState,
+  ): AgentWorkspaceState => {
+    let nextValue = createWorkspace();
+    setWorkspaces((current) => {
+      const existing = current[agentKey] ?? createWorkspace();
       nextValue = updater(existing);
       return {
         ...current,
@@ -299,16 +362,24 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     return nextValue;
   };
 
-  const setMessages: Setter<Message[]> = (value) => {
-    const activeKey = activeAgentKey();
-    const updated = updateConversation(activeKey, (current) => {
-      const nextMessages = typeof value === "function" ? value(current.messages) : value;
+  const updateTask = (
+    agentKey: string,
+    taskId: string,
+    updater: (current: AgentConversationState) => AgentConversationState,
+  ): AgentConversationState => {
+    let nextTask = emptyConversation("Task");
+    updateWorkspace(agentKey, (workspace) => {
+      const currentTask = workspace.tasks[taskId] ?? emptyConversation("Task");
+      nextTask = updater(currentTask);
       return {
-        ...current,
-        messages: nextMessages,
+        ...workspace,
+        tasks: {
+          ...workspace.tasks,
+          [taskId]: nextTask,
+        },
       };
     });
-    return updated.messages;
+    return nextTask;
   };
 
   onMount(async () => {
@@ -402,11 +473,21 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     setActiveAgentKeySignal(defaultAgent.key);
     setActiveAgentName(defaultAgent.name);
 
-    setConversations((current) => {
+    setWorkspaces((current) => {
       const next = { ...current };
       for (const agent of loadedAgentsWithDetails) {
         if (!next[agent.key]) {
-          next[agent.key] = emptyConversation();
+          next[agent.key] = createWorkspace();
+        }
+      }
+      return next;
+    });
+
+    setActiveTaskIds((current) => {
+      const next = { ...current };
+      for (const agent of loadedAgentsWithDetails) {
+        if (!next[agent.key]) {
+          next[agent.key] = "task-1";
         }
       }
       return next;
@@ -418,15 +499,78 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     if (!selectedAgent) {
       return;
     }
+    setWorkspaces((current) => {
+      if (current[selectedAgent.key]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [selectedAgent.key]: createWorkspace(),
+      };
+    });
+    setActiveTaskIds((current) => {
+      if (current[selectedAgent.key]) {
+        return current;
+      }
+      return {
+        ...current,
+        [selectedAgent.key]: "task-1",
+      };
+    });
     setActiveAgentKeySignal(selectedAgent.key);
     setActiveAgentName(selectedAgent.name);
   };
 
+  const setActiveTaskId = (taskId: string): void => {
+    const targetAgentKey = activeAgentKey();
+    const workspace = workspaces()[targetAgentKey];
+    if (!workspace || !workspace.tasks[taskId]) {
+      return;
+    }
+    setActiveTaskIds((current) => {
+      if (current[targetAgentKey] === taskId) {
+        return current;
+      }
+      return {
+        ...current,
+        [targetAgentKey]: taskId,
+      };
+    });
+  };
+
+  const createTask = (): void => {
+    const targetAgentKey = activeAgentKey();
+    let nextTaskId = "";
+    updateWorkspace(targetAgentKey, (workspace) => {
+      const taskId = `task-${workspace.nextTaskNumber}`;
+      nextTaskId = taskId;
+      return {
+        ...workspace,
+        tasks: {
+          ...workspace.tasks,
+          [taskId]: emptyConversation(`Task ${workspace.nextTaskNumber}`),
+        },
+        taskOrder: [...workspace.taskOrder, taskId],
+        nextTaskNumber: workspace.nextTaskNumber + 1,
+      };
+    });
+    if (nextTaskId.length > 0) {
+      setActiveTaskIds((current) => ({
+        ...current,
+        [targetAgentKey]: nextTaskId,
+      }));
+    }
+  };
+
   const sendMessage = async (content: string): Promise<void> => {
     const targetAgentKey = activeAgentKey();
-    const activeContextId = (conversations()[targetAgentKey]?.contextId ?? null) ?? buildAgentContextId(targetAgentKey);
+    const targetWorkspace = workspaces()[targetAgentKey] ?? createWorkspace();
+    const targetTaskId = activeTaskIds()[targetAgentKey] ?? targetWorkspace.taskOrder[0] ?? "task-1";
+    const activeContextId =
+      (targetWorkspace.tasks[targetTaskId]?.contextId ?? null) ?? buildAgentContextId(targetAgentKey);
 
-    updateConversation(targetAgentKey, (current) => {
+    updateTask(targetAgentKey, targetTaskId, (current) => {
       if (current.contextId) {
         return current;
       }
@@ -437,7 +581,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     });
 
     const setAgentMessages: Setter<Message[]> = (value) => {
-      const updated = updateConversation(targetAgentKey, (current) => {
+      const updated = updateTask(targetAgentKey, targetTaskId, (current) => {
         const nextMessages = typeof value === "function" ? value(current.messages) : value;
         return {
           ...current,
@@ -455,7 +599,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     };
 
     setAgentMessages((current) => [...current, humanMessage]);
-    updateConversation(targetAgentKey, (current) => ({
+    updateTask(targetAgentKey, targetTaskId, (current) => ({
       ...current,
       isSending: true,
       contextId: current.contextId ?? activeContextId,
@@ -644,7 +788,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       setAgentMessages((current) => [...current, errorMessage]);
       throw error;
     } finally {
-      updateConversation(targetAgentKey, (current) => ({
+      updateTask(targetAgentKey, targetTaskId, (current) => ({
         ...current,
         isSending: false,
       }));
@@ -661,6 +805,10 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
         activeAgentKey,
         activeAgentName,
         setActiveAgentKey,
+        tasks,
+        activeTaskId,
+        setActiveTaskId,
+        createTask,
       }}
     >
       {props.children}

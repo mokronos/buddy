@@ -12,6 +12,7 @@ const QUICK_PROMPTS = [
   "replace my todo list with two fresh tasks",
   "find the latest AI news and summarize it",
   "fetch https://example.com and give me a short summary",
+  "give me a 5 paragraph poem about your life",
 ];
 
 export default function PromptSuggestions(props: PromptSuggestionsProps) {

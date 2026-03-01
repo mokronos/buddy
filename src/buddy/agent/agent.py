@@ -1,4 +1,5 @@
 import os
+from time import sleep
 from typing import NoReturn
 
 from dotenv import load_dotenv
@@ -25,28 +26,40 @@ def _raise_langfuse_auth_error() -> NoReturn:
 
 def _is_langfuse_ready() -> bool:
     require_langfuse = os.environ.get("BUDDY_REQUIRE_LANGFUSE", "false").lower() == "true"
+    has_keys = bool(os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"))
 
-    try:
-        langfuse = Langfuse(blocked_instrumentation_scopes=["a2a-python-sdk"])
-        if langfuse.auth_check():
-            print("Langfuse client is authenticated and ready!")
-            return True
+    if not has_keys:
         if require_langfuse:
             _raise_langfuse_auth_error()
-            return False
-        else:
-            print("Langfuse auth failed; continuing with instrumentation disabled.")
-            return False
-    except Exception as error:
-        if require_langfuse:
-            raise
-        print(f"Langfuse unavailable ({error}); continuing with instrumentation disabled.")
+        print("Langfuse credentials missing; continuing with instrumentation disabled.")
         return False
 
-    return False
+    last_error: Exception | None = None
+    for _ in range(5):
+        try:
+            langfuse = Langfuse(blocked_instrumentation_scopes=["a2a-python-sdk"])
+            if langfuse.auth_check():
+                print("Langfuse client is authenticated and ready!")
+                return True
+        except Exception as error:
+            last_error = error
+        sleep(1)
+
+    if require_langfuse:
+        if last_error is not None:
+            raise RuntimeError(f"Langfuse unavailable ({last_error})") from last_error
+        _raise_langfuse_auth_error()
+
+    if last_error is not None:
+        print(f"Langfuse unavailable during startup ({last_error}); continuing with instrumentation enabled.")
+    else:
+        print("Langfuse auth check failed during startup; continuing with instrumentation enabled.")
+    return True
 
 
 langfuse_ready = _is_langfuse_ready()
+if langfuse_ready:
+    Agent.instrument_all()
 
 web_tools = FunctionToolset(
     tools=[

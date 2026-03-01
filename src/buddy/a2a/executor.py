@@ -113,22 +113,18 @@ class PyAIAgentExecutor(AgentExecutor):
         tool_calls: dict[str, dict[str, object | None]] = {}
         try:
             langfuse = get_client()
-            trace_initialized = False
+            trace_span = langfuse.start_span(name="buddy-a2a-request")
+            trace_span.update_trace(
+                name="buddy-a2a-request",
+                session_id=context_id,
+                input=query,
+            )
             send_stream, receive_stream = anyio.create_memory_object_stream()
 
             async def event_stream_handler(_ctx, events):
-                nonlocal trace_initialized
-                if not trace_initialized:
-                    langfuse.update_current_trace(
-                        name="buddy-a2a-request",
-                        session_id=context_id,
-                        input=query,
-                    )
-                    trace_initialized = True
-
                 async for event in events:
                     if isinstance(event, PartEndEvent) and isinstance(event.part, TextPart):
-                        langfuse.update_current_trace(output=event.part.content)
+                        trace_span.update_trace(output=event.part.content)
                     await send_stream.send(event)
 
             async def run_agent():
@@ -533,6 +529,8 @@ class PyAIAgentExecutor(AgentExecutor):
         )
 
         self.session_store.append_chat_message(context_id, "assistant", output)
+        trace_span.end()
+        langfuse.flush()
 
         await updater.update_status(TaskState.completed)
         self.session_store.append_event(

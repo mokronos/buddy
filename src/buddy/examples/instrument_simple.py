@@ -2,9 +2,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from pydantic_ai import Agent, RunContext
-
 from langfuse import get_client
+from pydantic_ai import Agent, RunContext
 
 langfuse = get_client()
 

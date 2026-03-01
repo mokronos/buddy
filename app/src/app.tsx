@@ -5,9 +5,9 @@ import { Suspense } from "solid-js";
 import { ChatProvider } from "~/context/ChatContext";
 import "./app.css";
 
-const queryClient = new QueryClient();
-
 export default function App() {
+  const queryClient = new QueryClient();
+
   return (
     <Router
       root={props => (

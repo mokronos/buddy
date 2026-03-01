@@ -1,7 +1,7 @@
 import asyncio
 import sys
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import typer
 from a2a.client.client import ClientConfig
@@ -170,7 +170,7 @@ def dev(
 @app.command()
 def chat(
     url: str = typer.Option("http://localhost:10001/a2a", help="A2A server base URL."),
-    session: Optional[str] = typer.Option(None, help="Session/context ID."),
+    session: str | None = typer.Option(None, help="Session/context ID."),
 ) -> None:
     session_id = session or str(uuid.uuid4())
     try:
@@ -183,7 +183,7 @@ def chat(
 def ask(
     text: str = typer.Argument(..., help="One-off user message."),
     url: str = typer.Option("http://localhost:10001/a2a", help="A2A server base URL."),
-    session: Optional[str] = typer.Option(None, help="Session/context ID."),
+    session: str | None = typer.Option(None, help="Session/context ID."),
 ) -> None:
     session_id = session or str(uuid.uuid4())
     try:

@@ -1,5 +1,5 @@
-from pathlib import Path
 from os import getenv
+from pathlib import Path
 
 
 def buddy_data_dir() -> Path:

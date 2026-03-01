@@ -4,11 +4,10 @@ load_dotenv()
 
 import asyncio
 
+from langfuse import get_client
 from pydantic_ai import Agent, AgentRunResultEvent, AgentStreamEvent, RunContext
 
 from buddy.models import create_codex_model
-
-from langfuse import get_client
 
 langfuse = get_client()
 

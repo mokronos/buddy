@@ -1,5 +1,5 @@
-from pydantic_ai import Agent, RunContext
 from dotenv import load_dotenv
+from pydantic_ai import Agent, RunContext
 
 load_dotenv()
 

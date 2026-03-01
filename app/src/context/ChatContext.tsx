@@ -207,8 +207,24 @@ interface AgentsIndexPayload {
   agents: AgentEndpoint[];
 }
 
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchAgentsIndex(): Promise<AgentsIndexPayload> {
-  const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`, { cache: "no-store" });
+  const response = await fetchWithTimeout(`${DEFAULT_A2A_BASE_URL}/agents`, { cache: "no-store" }, 5000);
   const payload = await readJson(response, AgentsIndexResponseSchema);
 
   const agents = payload.agents.map((entry) => ({
@@ -238,7 +254,7 @@ async function fetchAgentsIndex(): Promise<AgentsIndexPayload> {
 }
 
 async function fetchAgentCardDetails(agentCardPath: string): Promise<AgentCardDetails> {
-  const cardResponse = await fetch(resolveAgentCardUrl(agentCardPath), { cache: "no-store" });
+  const cardResponse = await fetchWithTimeout(resolveAgentCardUrl(agentCardPath), { cache: "no-store" }, 4000);
   try {
     const cardPayload = await readJson(cardResponse, AgentCardSchema);
     return toAgentCardDetails(cardPayload);

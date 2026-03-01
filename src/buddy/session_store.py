@@ -1,13 +1,13 @@
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from buddy.data_dirs import buddy_data_dir
-
 from pydantic_ai import ModelMessagesTypeAdapter
 from pydantic_core import to_jsonable_python
+
+from buddy.data_dirs import buddy_data_dir
 
 
 class SessionStore:
@@ -194,7 +194,7 @@ class SessionStore:
 
     @staticmethod
     def _now() -> str:
-        return datetime.now(tz=timezone.utc).isoformat()
+        return datetime.now(tz=UTC).isoformat()
 
     @staticmethod
     def _upsert_session(conn: sqlite3.Connection, session_id: str, now: str) -> None:

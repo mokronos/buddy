@@ -27,6 +27,7 @@ interface ChatContextValue {
   messages: Accessor<Message[]>;
   sendMessage: (content: string) => Promise<void>;
   isSending: Accessor<boolean>;
+  refreshAgents: () => Promise<void>;
   agents: Accessor<AgentEndpoint[]>;
   activeAgentKey: Accessor<string>;
   activeAgentName: Accessor<string>;
@@ -382,7 +383,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     return nextTask;
   };
 
-  onMount(async () => {
+  const refreshAgents = async (): Promise<void> => {
     const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents`);
     if (!response.ok) {
       throw new Error(`Failed to fetch agents: HTTP ${response.status}`);
@@ -441,12 +442,12 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     const loadedAgentsWithDetails = await Promise.all(
       loadedAgents.map(async (agent) => {
         try {
-          const response = await fetch(resolveAgentCardUrl(agent.agentCardPath));
-          if (!response.ok) {
+          const cardResponse = await fetch(resolveAgentCardUrl(agent.agentCardPath));
+          if (!cardResponse.ok) {
             return agent;
           }
 
-          const cardPayload = (await response.json()) as unknown;
+          const cardPayload = (await cardResponse.json()) as unknown;
           const details = readAgentCardDetails(cardPayload);
           return {
             ...agent,
@@ -462,16 +463,19 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
     setAgents(loadedAgentsWithDetails);
 
-    const defaultAgentKey =
+    const currentActiveKey = activeAgentKey();
+    const fallbackAgentKey =
       typeof payload.defaultAgentKey === "string" &&
       loadedAgentsWithDetails.some((agent) => agent.key === payload.defaultAgentKey)
         ? payload.defaultAgentKey
         : loadedAgentsWithDetails[0].key;
-
-    const defaultAgent =
-      loadedAgentsWithDetails.find((agent) => agent.key === defaultAgentKey) ?? loadedAgentsWithDetails[0];
-    setActiveAgentKeySignal(defaultAgent.key);
-    setActiveAgentName(defaultAgent.name);
+    const nextActiveKey = loadedAgentsWithDetails.some((agent) => agent.key === currentActiveKey)
+      ? currentActiveKey
+      : fallbackAgentKey;
+    const nextActiveAgent =
+      loadedAgentsWithDetails.find((agent) => agent.key === nextActiveKey) ?? loadedAgentsWithDetails[0];
+    setActiveAgentKeySignal(nextActiveAgent.key);
+    setActiveAgentName(nextActiveAgent.name);
 
     setWorkspaces((current) => {
       const next = { ...current };
@@ -492,6 +496,10 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       }
       return next;
     });
+  };
+
+  onMount(() => {
+    void refreshAgents();
   });
 
   const setActiveAgentKey = (agentKey: string): void => {
@@ -801,6 +809,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
         messages,
         sendMessage,
         isSending,
+        refreshAgents,
         agents,
         activeAgentKey,
         activeAgentName,

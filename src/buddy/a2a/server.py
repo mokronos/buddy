@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 import requests
 from a2a.server.apps import A2AFastAPIApplication
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
 from buddy.a2a.executor import PyAIAgentExecutor
+from buddy.a2a.external_agents import ExternalAgentManager
 from buddy.a2a.managed_agents import ManagedAgentManager
 from buddy.environment.manager import EnvironmentManager
 from buddy.environment.runtime import EnvironmentRuntime
@@ -81,6 +83,17 @@ class ManagedAgentCreateRequest(BaseModel):
 class ManagedAgentStartRequest(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     command: list[str] | None = None
+
+
+class ExternalAgentCreateRequest(BaseModel):
+    agent_id: str
+    base_url: str
+    use_legacy_card_path: bool = False
+
+
+class ExternalAgentUpdateRequest(BaseModel):
+    base_url: str
+    use_legacy_card_path: bool = False
 
 
 class RuntimeAcquireRequest(BaseModel):
@@ -162,6 +175,7 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
     app = FastAPI()
     agent_index: list[dict[str, str]] = []
     runtime_api_base_url = os.environ.get("BUDDY_RUNTIME_API_BASE_URL")
+    external_agent_manager = ExternalAgentManager()
 
     if runtime_api_base_url:
         agent_environment_runtime = RuntimeAPIEnvironmentManager(
@@ -187,6 +201,21 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             "agentCardPath": f"{mount_path}/.well-known/agent-card.json",
             "url": f"{base_url}{mount_path}",
             "status": status,
+        }
+
+    def _build_external_entry(agent_id: str) -> dict[str, str]:
+        record = external_agent_manager.get_agent(agent_id)
+        if record is None:
+            raise ValueError(f"External agent '{agent_id}' not found")
+        mount_path = f"/a2a/external/{agent_id}"
+        card_file = "agent.json" if record.use_legacy_card_path else "agent-card.json"
+        return {
+            "key": f"external:{agent_id}",
+            "name": agent_id,
+            "mountPath": mount_path,
+            "agentCardPath": f"{mount_path}/.well-known/{card_file}",
+            "url": f"{base_url}{mount_path}",
+            "status": "registered",
         }
 
     def _ensure_internal_auth(request: Request) -> None:
@@ -237,6 +266,109 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' missing mount/card paths")
 
         return mount_path, card_path
+
+    def _fetch_external_runtime_routes(agent_id: str) -> tuple[str, str]:
+        record = external_agent_manager.get_agent(agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"External agent '{agent_id}' not found")
+
+        base = record.base_url.rstrip("/")
+        try:
+            response = requests.get(f"{base}/agents", timeout=5)
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise HTTPException(
+                    status_code=502, detail=f"External agent '{agent_id}' returned invalid /agents payload"
+                )
+
+            agents_payload = payload.get("agents")
+            default_key = payload.get("defaultAgentKey")
+            if not isinstance(agents_payload, list) or not agents_payload:
+                raise HTTPException(status_code=502, detail=f"External agent '{agent_id}' reported no available agents")
+
+            selected = None
+            for entry in agents_payload:
+                if not isinstance(entry, dict):
+                    continue
+                key = entry.get("key")
+                if isinstance(default_key, str) and key == default_key:
+                    selected = entry
+                    break
+            if selected is None:
+                selected = agents_payload[0] if isinstance(agents_payload[0], dict) else None
+            if selected is None:
+                raise HTTPException(status_code=502, detail=f"External agent '{agent_id}' has invalid agent metadata")
+
+            mount_path = selected.get("mountPath")
+            card_path = selected.get("agentCardPath")
+            if not isinstance(mount_path, str) or not isinstance(card_path, str):
+                raise HTTPException(status_code=502, detail=f"External agent '{agent_id}' missing mount/card paths")
+
+            return mount_path, card_path
+        except requests.RequestException:
+            fallback_card_filename = "agent.json" if record.use_legacy_card_path else "agent-card.json"
+            fallback_card_url = f"{base}/.well-known/{fallback_card_filename}"
+            try:
+                fallback_response = requests.get(fallback_card_url, timeout=5)
+                fallback_response.raise_for_status()
+            except requests.RequestException as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"External agent '{agent_id}' is unreachable: {error}",
+                ) from error
+
+        fallback_card_path = (
+            "/.well-known/agent.json" if record.use_legacy_card_path else "/.well-known/agent-card.json"
+        )
+        return "/", fallback_card_path
+
+    async def _proxy_to_target(request: Request, target_url: str) -> Response:
+        raw_headers = dict(request.headers)
+        raw_headers.pop("host", None)
+        raw_headers.pop("content-length", None)
+        body = await request.body()
+        query_params = list(request.query_params.multi_items())
+
+        upstream = requests.request(
+            method=request.method,
+            url=target_url,
+            params=query_params,
+            headers=raw_headers,
+            data=body,
+            timeout=120,
+            stream=True,
+        )
+
+        excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
+        passthrough_headers = {key: value for key, value in upstream.headers.items() if key.lower() not in excluded}
+
+        content_type = upstream.headers.get("content-type", "")
+        if "text/event-stream" in content_type.lower():
+
+            def stream_content():
+                try:
+                    for chunk in upstream.iter_content(chunk_size=1024):
+                        if chunk:
+                            yield chunk
+                finally:
+                    upstream.close()
+
+            return StreamingResponse(
+                stream_content(),
+                status_code=upstream.status_code,
+                headers=passthrough_headers,
+                media_type=content_type,
+            )
+
+        upstream_content = upstream.content
+        upstream.close()
+        return Response(
+            content=upstream_content,
+            status_code=upstream.status_code,
+            headers=passthrough_headers,
+            media_type=content_type or None,
+        )
 
     @app.on_event("startup")
     async def _startup() -> None:
@@ -329,7 +461,8 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             if managed_agent_manager is not None
             else []
         )
-        all_entries = [*agent_index, *managed_entries]
+        external_entries = [_build_external_entry(record.agent_id) for record in external_agent_manager.list_agents()]
+        all_entries = [*agent_index, *managed_entries, *external_entries]
         default_key = default_agent_key
         managed_default_key = next(
             (
@@ -347,7 +480,55 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             "defaultAgentKey": default_key,
             "agents": all_entries,
             "managedAgents": managed_entries,
+            "externalAgents": external_entries,
         })
+
+    @app.get("/external-agents")
+    async def list_external_agents() -> JSONResponse:
+        records = [record.__dict__ for record in external_agent_manager.list_agents()]
+        return JSONResponse({"agents": records})
+
+    @app.post("/external-agents")
+    async def create_external_agent(payload: ExternalAgentCreateRequest) -> JSONResponse:
+        try:
+            record = external_agent_manager.create_agent(
+                agent_id=payload.agent_id,
+                base_url=payload.base_url,
+                use_legacy_card_path=payload.use_legacy_card_path,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        mount_path = f"/a2a/external/{record.agent_id}"
+        card_file = "agent.json" if record.use_legacy_card_path else "agent-card.json"
+        return JSONResponse(
+            {
+                "agent": record.__dict__,
+                "proxyBaseUrl": f"{base_url}{mount_path}",
+                "agentCardUrl": f"{base_url}{mount_path}/.well-known/{card_file}",
+            },
+            status_code=201,
+        )
+
+    @app.put("/external-agents/{agent_id}")
+    async def update_external_agent(agent_id: str, payload: ExternalAgentUpdateRequest) -> JSONResponse:
+        try:
+            record = external_agent_manager.update_agent(
+                agent_id,
+                base_url=payload.base_url,
+                use_legacy_card_path=payload.use_legacy_card_path,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return JSONResponse({"agent": record.__dict__})
+
+    @app.delete("/external-agents/{agent_id}")
+    async def delete_external_agent(agent_id: str) -> JSONResponse:
+        try:
+            external_agent_manager.delete_agent(agent_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return JSONResponse({"ok": True})
 
     @app.get("/managed-agents")
     async def list_managed_agents() -> JSONResponse:
@@ -486,27 +667,145 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
 
-        raw_headers = dict(request.headers)
-        raw_headers.pop("host", None)
-        raw_headers.pop("content-length", None)
-        body = await request.body()
-        query_params = list(request.query_params.multi_items())
+        return await _proxy_to_target(request, target_url)
 
-        upstream = requests.request(
-            method=request.method,
-            url=target_url,
-            params=query_params,
-            headers=raw_headers,
-            data=body,
-            timeout=120,
-            stream=True,
-        )
+    @app.api_route(
+        "/a2a/external/{agent_id}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    )
+    @app.api_route(
+        "/a2a/external/{agent_id}/{proxy_path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    )
+    async def proxy_external_agent(agent_id: str, request: Request, proxy_path: str = "") -> Response:
+        mount_path, card_path = _fetch_external_runtime_routes(agent_id)
+        proxy_root = f"{base_url}/a2a/external/{agent_id}"
+        if proxy_path in {".well-known/agent-card.json", ".well-known/agent.json"}:
+            upstream_card_url = external_agent_manager.resolve_target(agent_id, card_path)
+            try:
+                card_response = requests.get(upstream_card_url, timeout=15)
+                card_response.raise_for_status()
+                card = card_response.json()
+            except requests.RequestException as error:
+                raise HTTPException(status_code=502, detail=f"Failed to fetch external agent card: {error}") from error
 
-        excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
-        passthrough_headers = {key: value for key, value in upstream.headers.items() if key.lower() not in excluded}
+            if isinstance(card, dict):
+                card["url"] = proxy_root
+                if "preferredTransport" not in card and "preferred_transport" not in card:
+                    card["preferredTransport"] = "JSONRPC"
+            return JSONResponse(card)
 
-        content_type = upstream.headers.get("content-type", "")
-        if "text/event-stream" in content_type.lower():
+        if request.method == "POST" and proxy_path.strip("/") == "":
+            try:
+                rpc_payload = await request.json()
+            except Exception:
+                rpc_payload = None
+
+            if isinstance(rpc_payload, dict):
+                method_name = rpc_payload.get("method")
+                params_payload = rpc_payload.get("params")
+                if isinstance(method_name, str) and method_name in {"message/stream", "message/send"}:
+                    if not isinstance(params_payload, dict):
+                        params_payload = {}
+                        rpc_payload["params"] = params_payload
+
+                    configuration = params_payload.get("configuration")
+                    if not isinstance(configuration, dict):
+                        configuration = {}
+                        params_payload["configuration"] = configuration
+
+                    if "acceptedOutputModes" not in configuration:
+                        configuration["acceptedOutputModes"] = ["text"]
+
+                    target_url = external_agent_manager.resolve_target(agent_id, mount_path)
+                    upstream = requests.post(
+                        target_url,
+                        headers={
+                            "content-type": "application/json",
+                            "accept": request.headers.get("accept", "application/json"),
+                        },
+                        json=rpc_payload,
+                        timeout=120,
+                        stream=True,
+                    )
+
+                    excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
+                    passthrough_headers = {
+                        key: value for key, value in upstream.headers.items() if key.lower() not in excluded
+                    }
+
+                    content_type = upstream.headers.get("content-type", "")
+                    if "text/event-stream" in content_type.lower():
+
+                        def stream_content():
+                            try:
+                                for chunk in upstream.iter_content(chunk_size=1024):
+                                    if chunk:
+                                        yield chunk
+                            finally:
+                                upstream.close()
+
+                        return StreamingResponse(
+                            stream_content(),
+                            status_code=upstream.status_code,
+                            headers=passthrough_headers,
+                            media_type=content_type,
+                        )
+
+                    upstream_content = upstream.content
+                    upstream.close()
+                    return Response(
+                        content=upstream_content,
+                        status_code=upstream.status_code,
+                        headers=passthrough_headers,
+                        media_type=content_type or None,
+                    )
+
+        stream_bridge_paths = {
+            "message/stream",
+            "message:stream",
+            "v1/message/stream",
+            "v1/message:stream",
+        }
+        if request.method == "POST" and proxy_path.strip("/") in stream_bridge_paths:
+            try:
+                rest_payload = await request.json()
+            except Exception as error:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid JSON body for external stream request: {error}"
+                ) from error
+            if not isinstance(rest_payload, dict):
+                raise HTTPException(status_code=400, detail="Invalid stream request: body must be an object")
+
+            rpc_payload = {
+                "jsonrpc": "2.0",
+                "id": str(uuid4()),
+                "method": "message/stream",
+                "params": rest_payload,
+            }
+
+            target_url = external_agent_manager.resolve_target(agent_id, mount_path)
+            upstream = requests.post(
+                target_url,
+                headers={"content-type": "application/json", "accept": "text/event-stream"},
+                json=rpc_payload,
+                timeout=120,
+                stream=True,
+            )
+
+            excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
+            passthrough_headers = {key: value for key, value in upstream.headers.items() if key.lower() not in excluded}
+
+            content_type = upstream.headers.get("content-type", "")
+            if "text/event-stream" not in content_type.lower():
+                upstream_content = upstream.content
+                upstream.close()
+                return Response(
+                    content=upstream_content,
+                    status_code=upstream.status_code,
+                    headers=passthrough_headers,
+                    media_type=content_type or None,
+                )
 
             def stream_content():
                 try:
@@ -523,14 +822,14 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
                 media_type=content_type,
             )
 
-        upstream_content = upstream.content
-        upstream.close()
-        return Response(
-            content=upstream_content,
-            status_code=upstream.status_code,
-            headers=passthrough_headers,
-            media_type=content_type or None,
-        )
+        relative_path = proxy_path.strip("/")
+        upstream_path = f"{mount_path.rstrip('/')}/{relative_path}" if relative_path else mount_path
+        try:
+            target_url = external_agent_manager.resolve_target(agent_id, upstream_path)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+        return await _proxy_to_target(request, target_url)
 
     @app.post("/internal/runtime/acquire")
     async def runtime_acquire(payload: RuntimeAcquireRequest, request: Request) -> JSONResponse:

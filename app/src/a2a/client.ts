@@ -1,7 +1,16 @@
 import { ClientFactory, type Client } from "@a2a-js/sdk/client";
 import type { MessageSendParams } from "@a2a-js/sdk";
 
-export const DEFAULT_A2A_BASE_URL = "http://localhost:10001";
+function resolveDefaultBaseUrl(): string {
+  const configured = import.meta.env.VITE_A2A_BASE_URL;
+  if (typeof configured === "string" && configured.trim().length > 0) {
+    return configured.replace(/\/+$/, "");
+  }
+
+  return "http://localhost:10001";
+}
+
+export const DEFAULT_A2A_BASE_URL = resolveDefaultBaseUrl();
 
 export interface A2AClientConfig {
   baseUrl?: string;

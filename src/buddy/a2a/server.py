@@ -1,9 +1,8 @@
 import os
 from pathlib import Path
-from typing import cast
 from uuid import uuid4
 
-import requests
+import httpx
 from a2a.server.apps import A2AFastAPIApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
@@ -49,6 +48,9 @@ def _int_env(name: str, default: int) -> int:
 
 
 internal_runtime_token = os.environ.get("BUDDY_INTERNAL_RUNTIME_TOKEN")
+proxy_connect_timeout_s = float(os.environ.get("BUDDY_A2A_PROXY_CONNECT_TIMEOUT_S", "15"))
+proxy_write_timeout_s = float(os.environ.get("BUDDY_A2A_PROXY_WRITE_TIMEOUT_S", "120"))
+proxy_pool_timeout_s = float(os.environ.get("BUDDY_A2A_PROXY_POOL_TIMEOUT_S", "120"))
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -145,6 +147,15 @@ def _create_agent_card(name: str, url: str) -> AgentCard:
     )
 
 
+def _stream_proxy_timeout() -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=proxy_connect_timeout_s,
+        read=None,
+        write=proxy_write_timeout_s,
+        pool=proxy_pool_timeout_s,
+    )
+
+
 def _create_a2a_sub_app(
     agent: Agent,
     card_name: str,
@@ -225,134 +236,37 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         if provided != internal_runtime_token:
             raise HTTPException(status_code=401, detail="Unauthorized internal runtime request")
 
-    def _fetch_managed_runtime_routes(agent_id: str) -> tuple[str, str]:
-        if managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
-        manager = cast(ManagedAgentManager, managed_agent_manager)
-        target_base = manager.resolve_target(agent_id, "/")
-        try:
-            response = requests.get(f"{target_base.rstrip('/')}/agents", timeout=5)
-            response.raise_for_status()
-            payload = response.json()
-        except requests.RequestException as error:
-            raise HTTPException(
-                status_code=502, detail=f"Managed agent '{agent_id}' is unreachable: {error}"
-            ) from error
-
-        if not isinstance(payload, dict):
-            raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' returned invalid /agents payload")
-
-        agents_payload = payload.get("agents")
-        default_key = payload.get("defaultAgentKey")
-        if not isinstance(agents_payload, list) or not agents_payload:
-            raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' reported no available agents")
-
-        selected = None
-        for entry in agents_payload:
-            if not isinstance(entry, dict):
-                continue
-            key = entry.get("key")
-            if isinstance(default_key, str) and key == default_key:
-                selected = entry
-                break
-        if selected is None:
-            selected = agents_payload[0] if isinstance(agents_payload[0], dict) else None
-        if selected is None:
-            raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' has invalid agent metadata")
-
-        mount_path = selected.get("mountPath")
-        card_path = selected.get("agentCardPath")
-        if not isinstance(mount_path, str) or not isinstance(card_path, str):
-            raise HTTPException(status_code=502, detail=f"Managed agent '{agent_id}' missing mount/card paths")
-
-        return mount_path, card_path
-
-    def _fetch_external_runtime_routes(agent_id: str) -> tuple[str, str]:
-        record = external_agent_manager.get_agent(agent_id)
-        if record is None:
-            raise HTTPException(status_code=404, detail=f"External agent '{agent_id}' not found")
-
-        base = record.base_url.rstrip("/")
-        try:
-            response = requests.get(f"{base}/agents", timeout=5)
-            response.raise_for_status()
-            payload = response.json()
-            if not isinstance(payload, dict):
-                raise HTTPException(
-                    status_code=502, detail=f"External agent '{agent_id}' returned invalid /agents payload"
-                )
-
-            agents_payload = payload.get("agents")
-            default_key = payload.get("defaultAgentKey")
-            if not isinstance(agents_payload, list) or not agents_payload:
-                raise HTTPException(status_code=502, detail=f"External agent '{agent_id}' reported no available agents")
-
-            selected = None
-            for entry in agents_payload:
-                if not isinstance(entry, dict):
-                    continue
-                key = entry.get("key")
-                if isinstance(default_key, str) and key == default_key:
-                    selected = entry
-                    break
-            if selected is None:
-                selected = agents_payload[0] if isinstance(agents_payload[0], dict) else None
-            if selected is None:
-                raise HTTPException(status_code=502, detail=f"External agent '{agent_id}' has invalid agent metadata")
-
-            mount_path = selected.get("mountPath")
-            card_path = selected.get("agentCardPath")
-            if not isinstance(mount_path, str) or not isinstance(card_path, str):
-                raise HTTPException(status_code=502, detail=f"External agent '{agent_id}' missing mount/card paths")
-
-            return mount_path, card_path
-        except requests.RequestException:
-            fallback_card_filename = "agent.json" if record.use_legacy_card_path else "agent-card.json"
-            fallback_card_url = f"{base}/.well-known/{fallback_card_filename}"
-            try:
-                fallback_response = requests.get(fallback_card_url, timeout=5)
-                fallback_response.raise_for_status()
-            except requests.RequestException as error:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"External agent '{agent_id}' is unreachable: {error}",
-                ) from error
-
-        fallback_card_path = (
-            "/.well-known/agent.json" if record.use_legacy_card_path else "/.well-known/agent-card.json"
-        )
-        return "/", fallback_card_path
+    def _passthrough_headers(headers: httpx.Headers) -> dict[str, str]:
+        excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
+        return {key: value for key, value in headers.items() if key.lower() not in excluded}
 
     async def _proxy_to_target(request: Request, target_url: str) -> Response:
         raw_headers = dict(request.headers)
         raw_headers.pop("host", None)
         raw_headers.pop("content-length", None)
         body = await request.body()
-        query_params = list(request.query_params.multi_items())
-
-        upstream = requests.request(
+        client = httpx.AsyncClient(timeout=_stream_proxy_timeout())
+        upstream_request = client.build_request(
             method=request.method,
             url=target_url,
-            params=query_params,
+            params=request.query_params,
             headers=raw_headers,
-            data=body,
-            timeout=120,
-            stream=True,
+            content=body,
         )
+        upstream = await client.send(upstream_request, stream=True)
 
-        excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
-        passthrough_headers = {key: value for key, value in upstream.headers.items() if key.lower() not in excluded}
-
+        passthrough_headers = _passthrough_headers(upstream.headers)
         content_type = upstream.headers.get("content-type", "")
         if "text/event-stream" in content_type.lower():
 
-            def stream_content():
+            async def stream_content():
                 try:
-                    for chunk in upstream.iter_content(chunk_size=1024):
+                    async for chunk in upstream.aiter_bytes(chunk_size=1024):
                         if chunk:
                             yield chunk
                 finally:
-                    upstream.close()
+                    await upstream.aclose()
+                    await client.aclose()
 
             return StreamingResponse(
                 stream_content(),
@@ -361,8 +275,9 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
                 media_type=content_type,
             )
 
-        upstream_content = upstream.content
-        upstream.close()
+        upstream_content = await upstream.aread()
+        await upstream.aclose()
+        await client.aclose()
         return Response(
             content=upstream_content,
             status_code=upstream.status_code,
@@ -641,18 +556,21 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         if manager is None:
             raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
-            mount_path, card_path = _fetch_managed_runtime_routes(agent_id)
+            manager.resolve_target(agent_id, "/")
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
 
+        mount_path = "/"
+        card_path = "/.well-known/agent-card.json"
         proxy_root = f"{base_url}/a2a/managed/{agent_id}"
         if proxy_path == ".well-known/agent-card.json":
             upstream_card_url = manager.resolve_target(agent_id, card_path)
             try:
-                card_response = requests.get(upstream_card_url, timeout=15)
-                card_response.raise_for_status()
-                card = card_response.json()
-            except requests.RequestException as error:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    card_response = await client.get(upstream_card_url)
+                    card_response.raise_for_status()
+                    card = card_response.json()
+            except httpx.HTTPError as error:
                 raise HTTPException(status_code=502, detail=f"Failed to fetch managed agent card: {error}") from error
 
             if isinstance(card, dict):
@@ -678,15 +596,21 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
     async def proxy_external_agent(agent_id: str, request: Request, proxy_path: str = "") -> Response:
-        mount_path, card_path = _fetch_external_runtime_routes(agent_id)
+        record = external_agent_manager.get_agent(agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"External agent '{agent_id}' not found")
+
+        mount_path = "/"
+        card_path = "/.well-known/agent.json" if record.use_legacy_card_path else "/.well-known/agent-card.json"
         proxy_root = f"{base_url}/a2a/external/{agent_id}"
         if proxy_path in {".well-known/agent-card.json", ".well-known/agent.json"}:
             upstream_card_url = external_agent_manager.resolve_target(agent_id, card_path)
             try:
-                card_response = requests.get(upstream_card_url, timeout=15)
-                card_response.raise_for_status()
-                card = card_response.json()
-            except requests.RequestException as error:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    card_response = await client.get(upstream_card_url)
+                    card_response.raise_for_status()
+                    card = card_response.json()
+            except httpx.HTTPError as error:
                 raise HTTPException(status_code=502, detail=f"Failed to fetch external agent card: {error}") from error
 
             if isinstance(card, dict):
@@ -718,32 +642,31 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
                         configuration["acceptedOutputModes"] = ["text"]
 
                     target_url = external_agent_manager.resolve_target(agent_id, mount_path)
-                    upstream = requests.post(
+                    client = httpx.AsyncClient(timeout=_stream_proxy_timeout())
+                    upstream_request = client.build_request(
+                        "POST",
                         target_url,
                         headers={
                             "content-type": "application/json",
                             "accept": request.headers.get("accept", "application/json"),
                         },
                         json=rpc_payload,
-                        timeout=120,
-                        stream=True,
                     )
+                    upstream = await client.send(upstream_request, stream=True)
 
-                    excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
-                    passthrough_headers = {
-                        key: value for key, value in upstream.headers.items() if key.lower() not in excluded
-                    }
+                    passthrough_headers = _passthrough_headers(upstream.headers)
 
                     content_type = upstream.headers.get("content-type", "")
                     if "text/event-stream" in content_type.lower():
 
-                        def stream_content():
+                        async def stream_content():
                             try:
-                                for chunk in upstream.iter_content(chunk_size=1024):
+                                async for chunk in upstream.aiter_bytes(chunk_size=1024):
                                     if chunk:
                                         yield chunk
                             finally:
-                                upstream.close()
+                                await upstream.aclose()
+                                await client.aclose()
 
                         return StreamingResponse(
                             stream_content(),
@@ -752,8 +675,9 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
                             media_type=content_type,
                         )
 
-                    upstream_content = upstream.content
-                    upstream.close()
+                    upstream_content = await upstream.aread()
+                    await upstream.aclose()
+                    await client.aclose()
                     return Response(
                         content=upstream_content,
                         status_code=upstream.status_code,
@@ -785,21 +709,22 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
             }
 
             target_url = external_agent_manager.resolve_target(agent_id, mount_path)
-            upstream = requests.post(
+            client = httpx.AsyncClient(timeout=_stream_proxy_timeout())
+            upstream_request = client.build_request(
+                "POST",
                 target_url,
                 headers={"content-type": "application/json", "accept": "text/event-stream"},
                 json=rpc_payload,
-                timeout=120,
-                stream=True,
             )
+            upstream = await client.send(upstream_request, stream=True)
 
-            excluded = {"content-length", "transfer-encoding", "connection", "content-encoding"}
-            passthrough_headers = {key: value for key, value in upstream.headers.items() if key.lower() not in excluded}
+            passthrough_headers = _passthrough_headers(upstream.headers)
 
             content_type = upstream.headers.get("content-type", "")
             if "text/event-stream" not in content_type.lower():
-                upstream_content = upstream.content
-                upstream.close()
+                upstream_content = await upstream.aread()
+                await upstream.aclose()
+                await client.aclose()
                 return Response(
                     content=upstream_content,
                     status_code=upstream.status_code,
@@ -807,13 +732,14 @@ def create_app(agents: dict[str, Agent]) -> FastAPI:
                     media_type=content_type or None,
                 )
 
-            def stream_content():
+            async def stream_content():
                 try:
-                    for chunk in upstream.iter_content(chunk_size=1024):
+                    async for chunk in upstream.aiter_bytes(chunk_size=1024):
                         if chunk:
                             yield chunk
                 finally:
-                    upstream.close()
+                    await upstream.aclose()
+                    await client.aclose()
 
             return StreamingResponse(
                 stream_content(),

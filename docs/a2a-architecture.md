@@ -470,34 +470,51 @@ class A2AGateway:
 
 ```
 src/buddy/
-├── api/                    # Client-facing REST API
-│   ├── __init__.py
-│   ├── sessions.py         # Session CRUD endpoints
-│   ├── messages.py         # Message management
-│   └── events.py           # SSE event streaming
-├── a2a/
-│   ├── __init__.py
-│   ├── gateway.py          # A2A client for external agents
-│   ├── transformer.py      # A2A → Domain event transformation
-│   └── executor.py         # (existing) Local agent executor
-├── domain/                 # Domain models (authoritative)
-│   ├── __init__.py
-│   ├── models.py           # DomainMessage, Session, AgentRun
-│   └── events.py           # Domain event types
-├── session/
-│   ├── __init__.py
-│   ├── manager.py          # Session lifecycle, forking
-│   └── store.py            # Database operations
-└── main.py                 # FastAPI app composition
+├── main.py                    # FastAPI entrypoint (control plane)
+├── cli.py                     # CLI client for direct A2A chat/ask
+├── session_store.py           # Session, message, and event persistence
+├── control_plane/             # Control-plane APIs and orchestration
+│   ├── server.py              # App composition and startup/shutdown
+│   ├── server_state.py        # Shared state passed into routers
+│   ├── routes_sessions.py     # /sessions and /api/v1/sessions
+│   ├── routes_agents.py       # Managed/external agent APIs
+│   ├── routes_proxy.py        # /a2a/managed/* and /a2a/external/* proxy
+│   ├── routes_runtime.py      # Internal runtime APIs for tool containers
+│   ├── managed_agents.py      # Docker lifecycle for managed runtime agents
+│   ├── external_agents.py     # Registry for external A2A agents
+│   └── validation.py          # Agent id and external URL validation
+├── runtime/                   # Reusable agent runtime image code
+│   ├── main.py                # Runtime FastAPI entrypoint
+│   ├── config.py              # Build runtime agents from YAML config
+│   ├── agent.py               # pydantic-ai agent and tool wiring
+│   ├── deps.py                # Runtime dependency container
+│   ├── a2a/
+│   │   ├── server.py          # Runtime A2A app/card construction
+│   │   ├── executor.py        # Agent execution and event stream output
+│   │   ├── event_writer.py    # Session/event persistence helpers
+│   │   └── utils.py           # A2A conversion and extraction utilities
+│   ├── models/                # Model adapters
+│   └── tools/                 # Built-in tool implementations
+├── environment/               # Tool environment container management
+│   ├── manager.py             # Local environment pool lifecycle
+│   ├── runtime_api.py         # Runtime-side API client to control plane
+│   ├── runtime.py             # Runtime manager data models/helpers
+│   └── docker/                # Docker build/runtime assets
+└── shared/
+    └── runtime_config.py      # Shared runtime YAML schema/validation
+
+app/
+└── src/                       # SolidStart client consuming control-plane APIs
 ```
 
 ## Migration Path from Current Implementation
 
 ### Current State
-- SQLite database with `sessions`, `messages`, `events`, `chat_messages`
-- A2A endpoint at `/a2a` serving local agent
-- Direct A2A event storage in `events` table
-- Session list at `/sessions`, detail at `/sessions/{id}`
+- FastAPI control plane composes routers from `src/buddy/control_plane/`
+- Domain APIs are served under `/api/v1/*` with compatibility aliases like `/sessions` and `/agents`
+- A2A remains at the boundary through proxies (`/a2a/managed/{agent_id}` and `/a2a/external/{agent_id}`)
+- Runtime agents run from `src/buddy/runtime/` and are configured through mounted YAML
+- Session history and events persist in SQLite (`sessions.db`) via `SessionStore`
 
 ### Migration Steps
 

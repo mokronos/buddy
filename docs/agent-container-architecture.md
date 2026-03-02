@@ -94,6 +94,32 @@ tools:
 5. Control plane routes to agent container A2A endpoint.
 6. Streaming/events flow back to UI.
 
+## Current Code Layout
+
+The current repository structure that implements this architecture:
+
+```
+src/buddy/
+├── control_plane/
+│   ├── server.py            # FastAPI app composition + startup/shutdown
+│   ├── routes_agents.py     # Managed/external agent CRUD endpoints
+│   ├── routes_proxy.py      # A2A proxy routes for managed/external agents
+│   ├── routes_runtime.py    # Internal runtime endpoints used by containers
+│   ├── managed_agents.py    # Docker-backed managed agent lifecycle
+│   └── external_agents.py   # External agent registry
+├── runtime/
+│   ├── main.py              # Runtime container entrypoint
+│   ├── config.py            # Build runtime agent from YAML config
+│   ├── agent.py             # Agent + tools wiring
+│   └── a2a/server.py        # A2A server and agent-card setup
+├── environment/
+│   ├── manager.py           # Local tool environment pool
+│   └── runtime_api.py       # Runtime -> control plane API client
+└── shared/runtime_config.py # Shared YAML schema validation
+
+app/src/                     # SolidStart client talking to control plane APIs
+```
+
 ## Suggested Phased Rollout
 
 1. **Phase 1: Single runtime image + YAML config mount**

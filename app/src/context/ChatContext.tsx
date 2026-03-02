@@ -413,25 +413,67 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       contextId: current.contextId ?? activeContextId,
     }));
 
-    const assistantMessageId = crypto.randomUUID();
-    const assistantTimestamp = timestamp();
-    let streamedText = "";
+    let activeAssistantMessageId: string | null = null;
+    let activeAssistantTimestamp = "";
+    let streamedAssistantText = "";
+    let sawToolResult = false;
+    let sawOutputAfterLastTool = false;
     let thinkingMessageId: string | null = null;
     let thinkingTimestamp = "";
     let streamedThinking = "";
+
+    const beginAssistantMessage = (): void => {
+      activeAssistantMessageId = crypto.randomUUID();
+      activeAssistantTimestamp = timestamp();
+      streamedAssistantText = "";
+    };
+
+    const ensureAssistantMessage = (): void => {
+      if (activeAssistantMessageId !== null) {
+        return;
+      }
+      beginAssistantMessage();
+    };
+
+    const clearAssistantMessage = (): void => {
+      activeAssistantMessageId = null;
+      activeAssistantTimestamp = "";
+      streamedAssistantText = "";
+    };
+
+    const removeAssistantMessage = (): void => {
+      if (activeAssistantMessageId === null) {
+        return;
+      }
+      const targetMessageId = activeAssistantMessageId;
+      setAgentMessages((current) => current.filter((message) => message.id !== targetMessageId));
+      clearAssistantMessage();
+    };
 
     const appendAssistantChunk = (chunk: string): void => {
       if (chunk.length === 0) {
         return;
       }
 
-      streamedText = `${streamedText}${chunk}`;
-      upsertAIMessage(setAgentMessages, assistantMessageId, streamedText, assistantTimestamp);
+      ensureAssistantMessage();
+      streamedAssistantText = `${streamedAssistantText}${chunk}`;
+      upsertAIMessage(
+        setAgentMessages,
+        activeAssistantMessageId!,
+        streamedAssistantText,
+        activeAssistantTimestamp,
+      );
     };
 
     const setAssistantText = (text: string): void => {
-      streamedText = text;
-      upsertAIMessage(setAgentMessages, assistantMessageId, streamedText, assistantTimestamp);
+      ensureAssistantMessage();
+      streamedAssistantText = text;
+      upsertAIMessage(
+        setAgentMessages,
+        activeAssistantMessageId!,
+        streamedAssistantText,
+        activeAssistantTimestamp,
+      );
     };
 
     const appendThinkingChunk = (chunk: string): void => {
@@ -488,13 +530,6 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
       await a2aClient.sendMessageStream(createTextMessageParams(content, activeContextId), (event) => {
         if (event.kind === "message") {
-          const payload = event as { role?: unknown; parts?: unknown };
-          const isAgentMessage = payload.role === "agent";
-          const text = readTextParts(payload.parts);
-
-          if (isAgentMessage && text.length > 0) {
-            setAssistantText(text);
-          }
           return;
         }
 
@@ -508,12 +543,23 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
           const artifactText = readTextParts(payload.artifact?.parts);
 
           if (artifactName === "output_start" || artifactName === "output_delta") {
+            if (sawToolResult) {
+              sawOutputAfterLastTool = true;
+            }
             appendAssistantChunk(artifactText);
             return;
           }
 
           if (artifactName === "output_end" || artifactName === "full_output") {
             if (artifactText.length > 0) {
+              if (artifactName === "full_output") {
+                if (sawToolResult && !sawOutputAfterLastTool) {
+                  clearAssistantMessage();
+                }
+              }
+              if (sawToolResult) {
+                sawOutputAfterLastTool = true;
+              }
               setAssistantText(artifactText);
             }
             return;
@@ -540,6 +586,13 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
           if (artifactName === "tool_result") {
             finishThinkingBlock();
+
+            if (!sawToolResult && activeAssistantMessageId !== null) {
+              removeAssistantMessage();
+            }
+            sawToolResult = true;
+            sawOutputAfterLastTool = false;
+            clearAssistantMessage();
 
             const dataParts = readDataParts(payload.artifact?.parts);
             const firstDataPart = dataParts[0];
@@ -588,10 +641,6 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       });
 
       finishThinkingBlock();
-
-      if (streamedText.length === 0) {
-        setAssistantText("");
-      }
     } catch (error) {
       const errorMessage: Message = {
         id: crypto.randomUUID(),

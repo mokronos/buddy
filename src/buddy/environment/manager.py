@@ -94,6 +94,48 @@ class EnvironmentManager:
         except NotFound:
             return
 
+    def release_managed_agent_containers(self, agent_id: str) -> int:
+        safe_agent_id = self._slug(agent_id)
+        context_prefix = f"agent-managed-{safe_agent_id}--"
+        name_prefix = f"buddy-env-agent-managed-{safe_agent_id}-"
+
+        with self._lock:
+            owners_to_release = [
+                owner_id
+                for owner_id in self._leases.keys()
+                if self._owner_matches_context_prefix(owner_id, context_prefix)
+            ]
+
+        removed = 0
+        for owner_id in owners_to_release:
+            with self._lock:
+                container_id = self._leases.pop(owner_id, None)
+            if container_id is None:
+                continue
+            self._remove_container(container_id)
+            removed += 1
+
+        with self._lock:
+            idle_container_ids = list(self._idle)
+            self._idle.clear()
+
+        for container_id in idle_container_ids:
+            try:
+                container = self._docker.containers.get(container_id)
+                container.reload()
+            except NotFound:
+                continue
+
+            if container.name.startswith(name_prefix):
+                self._remove_container(container_id)
+                removed += 1
+                continue
+
+            with self._lock:
+                self._idle.append(container_id)
+
+        return removed
+
     def exec(self, owner_id: str, command: str, timeout_s: int = 30) -> ExecResult:
         lease = self.acquire(owner_id)
         container = self._docker.containers.get(lease.container_id)
@@ -171,6 +213,20 @@ class EnvironmentManager:
             except NotFound:
                 continue
         return self._create_container()
+
+    @staticmethod
+    def _owner_matches_context_prefix(owner_id: str, context_prefix: str) -> bool:
+        if ":" not in owner_id:
+            return False
+        _, context_id = owner_id.split(":", 1)
+        return context_id.startswith(context_prefix)
+
+    def _remove_container(self, container_id: str) -> None:
+        try:
+            container = self._docker.containers.get(container_id)
+            container.remove(force=True)
+        except NotFound:
+            return
 
     def _ensure_image_exists(self) -> None:
         try:

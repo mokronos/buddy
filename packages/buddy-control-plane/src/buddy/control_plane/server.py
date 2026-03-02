@@ -119,6 +119,16 @@ def create_app() -> FastAPI:
             else:
                 await run_in_threadpool(managed_agent_manager.start_agent, default_agent_id)
 
+        if _bool_env("BUDDY_MANAGED_AGENT_AUTO_START_ALL", True):
+            records = await run_in_threadpool(managed_agent_manager.list_agents)
+            for record in records:
+                if record.status == "running":
+                    continue
+                try:
+                    await run_in_threadpool(managed_agent_manager.start_agent, record.agent_id)
+                except Exception as error:
+                    print(f"Failed to auto-start managed agent '{record.agent_id}' during startup: {error}")
+
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         records = await run_in_threadpool(managed_agent_manager.list_agents)

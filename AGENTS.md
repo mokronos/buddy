@@ -16,6 +16,12 @@ The goal is to build a JARVIS-like assistant with strong tooling and extensible 
 - Do not do any work in legacy TUIs unless explicitly requested.
 - Prefer changes that strengthen the server/client + A2A direction.
 
+## Development Stage Policy
+
+- This project is currently in heavy development; do **not** add compatibility layers, backward-compatibility shims, dual codepaths, or legacy fallbacks unless explicitly requested.
+- Prefer clean replacements and direct migrations, even when they are breaking changes.
+- Remove obsolete paths as part of refactors instead of keeping temporary compatibility code around.
+
 ## Development Environment
 
 - **Python Version**: Requires Python 3.13+

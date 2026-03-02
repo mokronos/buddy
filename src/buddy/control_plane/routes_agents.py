@@ -43,11 +43,6 @@ class ExternalAgentUpdateRequest(BaseModel):
 def build_agents_router(state: ServerState) -> APIRouter:
     router = APIRouter()
 
-    async def cleanup_managed_environment(agent_id: str) -> None:
-        if state.local_environment_manager is None:
-            return
-        await run_in_threadpool(state.local_environment_manager.release_managed_agent_containers, agent_id)
-
     @router.get("/agents")
     @router.get("/api/v1/agents")
     async def list_agents() -> JSONResponse:
@@ -185,8 +180,6 @@ def build_agents_router(state: ServerState) -> APIRouter:
             raise HTTPException(status_code=400, detail=str(error)) from error
         except Exception as error:
             raise HTTPException(status_code=500, detail=f"Failed to update agent config: {error}") from error
-        if payload.restart:
-            await cleanup_managed_environment(normalized_agent_id)
         return JSONResponse({"agent": record.__dict__})
 
     @router.get("/agents/managed/{agent_id}/logs")
@@ -270,7 +263,6 @@ def build_agents_router(state: ServerState) -> APIRouter:
             record = await run_in_threadpool(state.managed_agent_manager.stop_agent, normalized_agent_id)
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
-        await cleanup_managed_environment(normalized_agent_id)
         return JSONResponse({"agent": record.__dict__})
 
     @router.delete("/agents/managed/{agent_id}")
@@ -284,7 +276,6 @@ def build_agents_router(state: ServerState) -> APIRouter:
             await run_in_threadpool(state.managed_agent_manager.delete_agent, normalized_agent_id, remove_config)
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
-        await cleanup_managed_environment(normalized_agent_id)
         return JSONResponse({"ok": True})
 
     return router

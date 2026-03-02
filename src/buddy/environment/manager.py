@@ -1,10 +1,12 @@
 import io
+import os
 import posixpath
 import shlex
 import tarfile
 from collections import deque
 from dataclasses import dataclass
 from threading import Lock
+from time import sleep
 from uuid import uuid4
 
 import docker
@@ -34,13 +36,15 @@ class EnvironmentManager:
         self.name_prefix = name_prefix
         self.keepalive_command = ["sh", "-lc", "while true; do sleep 3600; done"]
 
-        self._docker = docker.from_env()
+        self._docker = docker.from_env(version=os.environ.get("DOCKER_API_VERSION", "1.45"))
+        self._docker_ready = False
         self._lock = Lock()
         self._leases: dict[str, str] = {}
         self._idle: deque[str] = deque()
         self._owner_indices: dict[str, int] = {}
 
     def start(self) -> None:
+        self._ensure_docker_ready()
         self._ensure_image_exists()
         with self._lock:
             missing = max(0, self.warm_containers - len(self._idle))
@@ -49,6 +53,7 @@ class EnvironmentManager:
                 self._idle.append(self._container_id(container))
 
     def stop(self) -> None:
+        self._ensure_docker_ready()
         with self._lock:
             container_ids = set(self._idle)
             container_ids.update(self._leases.values())
@@ -63,6 +68,7 @@ class EnvironmentManager:
                 continue
 
     def acquire(self, owner_id: str) -> EnvironmentLease:
+        self._ensure_docker_ready()
         with self._lock:
             leased_container_id = self._leases.get(owner_id)
             if leased_container_id:
@@ -78,6 +84,7 @@ class EnvironmentManager:
             return EnvironmentLease(owner_id=owner_id, container_id=container_id)
 
     def release(self, owner_id: str, reusable: bool = True) -> None:
+        self._ensure_docker_ready()
         with self._lock:
             container_id = self._leases.pop(owner_id, None)
             if container_id is None:
@@ -88,53 +95,29 @@ class EnvironmentManager:
                 self._idle.append(self._container_id(container))
                 return
 
-        try:
-            container = self._docker.containers.get(container_id)
-            container.remove(force=True)
-        except NotFound:
+        self._remove_container(container_id)
+
+    def _ensure_docker_ready(self) -> None:
+        if self._docker_ready:
             return
 
-    def release_managed_agent_containers(self, agent_id: str) -> int:
-        safe_agent_id = self._slug(agent_id)
-        context_prefix = f"agent-managed-{safe_agent_id}--"
-        name_prefix = f"buddy-env-agent-managed-{safe_agent_id}-"
-
-        with self._lock:
-            owners_to_release = [
-                owner_id
-                for owner_id in self._leases.keys()
-                if self._owner_matches_context_prefix(owner_id, context_prefix)
-            ]
-
-        removed = 0
-        for owner_id in owners_to_release:
-            with self._lock:
-                container_id = self._leases.pop(owner_id, None)
-            if container_id is None:
-                continue
-            self._remove_container(container_id)
-            removed += 1
-
-        with self._lock:
-            idle_container_ids = list(self._idle)
-            self._idle.clear()
-
-        for container_id in idle_container_ids:
+        delay = 0.2
+        max_attempts = 40
+        last_error: Exception | None = None
+        for _ in range(max_attempts):
             try:
-                container = self._docker.containers.get(container_id)
-                container.reload()
-            except NotFound:
-                continue
+                if self._docker.ping():
+                    self._docker_ready = True
+                    return
+            except Exception as error:
+                last_error = error
 
-            if container.name.startswith(name_prefix):
-                self._remove_container(container_id)
-                removed += 1
-                continue
+            sleep(delay)
+            delay = min(delay * 2, 2.0)
 
-            with self._lock:
-                self._idle.append(container_id)
-
-        return removed
+        if last_error is None:
+            raise RuntimeError("Environment Docker daemon is unavailable")
+        raise RuntimeError(f"Environment Docker daemon is unavailable: {last_error}") from last_error
 
     def exec(self, owner_id: str, command: str, timeout_s: int = 30) -> ExecResult:
         lease = self.acquire(owner_id)
@@ -213,13 +196,6 @@ class EnvironmentManager:
             except NotFound:
                 continue
         return self._create_container()
-
-    @staticmethod
-    def _owner_matches_context_prefix(owner_id: str, context_prefix: str) -> bool:
-        if ":" not in owner_id:
-            return False
-        _, context_id = owner_id.split(":", 1)
-        return context_id.startswith(context_prefix)
 
     def _remove_container(self, container_id: str) -> None:
         try:

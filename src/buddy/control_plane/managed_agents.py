@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import docker
 import requests
-from docker.errors import NotFound
+from docker.errors import APIError, NotFound
 
 from buddy.control_plane.validation import validate_agent_id
 from buddy.shared.runtime_config import parse_runtime_agent_config_yaml
@@ -127,10 +127,19 @@ class ManagedAgentManager:
                     container = self._docker.containers.get(record.container_id)
                     container.reload()
                     if container.status == "running":
-                        refreshed = self._refresh_status(record)
-                        self._records[agent_id] = refreshed
-                        self._save_registry()
-                        return refreshed
+                        network_name = self._agent_network_name(agent_id)
+                        dind_name = self._agent_dind_name(agent_id)
+                        expected_docker_host = f"tcp://{dind_name}:2375"
+                        compatibility_env = {
+                            "DOCKER_HOST": expected_docker_host,
+                        }
+                        if self._runtime_container_compatible(container, compatibility_env, network_name):
+                            self._ensure_agent_network(agent_id)
+                            self._ensure_dind_container(agent_id, network_name)
+                            refreshed = self._refresh_status(record)
+                            self._records[agent_id] = refreshed
+                            self._save_registry()
+                            return refreshed
                 except NotFound:
                     pass
 
@@ -161,12 +170,17 @@ class ManagedAgentManager:
             record = self._records.get(agent_id)
             if record is None:
                 raise ValueError(f"Agent '{agent_id}' does not exist")
-            if not record.container_id:
-                return record
+
+            if record.container_id:
+                try:
+                    container = self._docker.containers.get(record.container_id)
+                    container.stop(timeout=10)
+                except NotFound:
+                    pass
 
             try:
-                container = self._docker.containers.get(record.container_id)
-                container.stop(timeout=10)
+                dind = self._docker.containers.get(self._agent_dind_name(agent_id))
+                dind.stop(timeout=10)
             except NotFound:
                 pass
 
@@ -194,6 +208,20 @@ class ManagedAgentManager:
                 container.remove(force=True)
             except NotFound:
                 pass
+
+        try:
+            dind = self._docker.containers.get(self._agent_dind_name(agent_id))
+            dind.remove(force=True)
+        except NotFound:
+            pass
+
+        try:
+            network = self._docker.networks.get(self._agent_network_name(agent_id))
+            network.remove()
+        except NotFound:
+            pass
+        except APIError:
+            pass
 
         if remove_config:
             config_path = Path(record.config_path)
@@ -291,13 +319,17 @@ class ManagedAgentManager:
                 "LANGFUSE_SECRET_KEY",
                 "LANGFUSE_HOST",
                 "LANGFUSE_BASE_URL",
-                "BUDDY_RUNTIME_API_BASE_URL",
-                "BUDDY_INTERNAL_RUNTIME_TOKEN",
+                "BUDDY_ENV_IMAGE",
+                "BUDDY_ENV_WARM_CONTAINERS",
             ]
             if (value := os.environ.get(key))
         }
+        network_name = self._agent_network_name(record.agent_id)
+        dind_name = self._agent_dind_name(record.agent_id)
+        docker_host = f"tcp://{dind_name}:2375"
         env = {
             "BUDDY_AGENT_CONFIG": record.config_mount_path,
+            "DOCKER_HOST": docker_host,
             **inherited_env,
             **extra_env,
         }
@@ -305,9 +337,6 @@ class ManagedAgentManager:
             env["LANGFUSE_HOST"] = os.environ.get("BUDDY_LANGFUSE_HOST", "http://host.docker.internal:3000")
         if "LANGFUSE_BASE_URL" not in env and isinstance(env.get("LANGFUSE_HOST"), str):
             env["LANGFUSE_BASE_URL"] = env["LANGFUSE_HOST"]
-        if "BUDDY_RUNTIME_API_BASE_URL" not in env:
-            control_plane_port = os.environ.get("PORT", "10001")
-            env["BUDDY_RUNTIME_API_BASE_URL"] = f"http://host.docker.internal:{control_plane_port}"
         for key in ("LANGFUSE_HOST", "LANGFUSE_BASE_URL"):
             raw_value = env.get(key)
             if not isinstance(raw_value, str):
@@ -320,6 +349,9 @@ class ManagedAgentManager:
             env[key] = f"{parsed.scheme}://host.docker.internal{port_part}{path_part}"
 
         self._prune_stale_agent_containers(record.agent_id)
+        self._prune_stale_dind_containers(record.agent_id)
+        self._ensure_agent_network(record.agent_id)
+        self._ensure_dind_container(record.agent_id, network_name)
 
         port_key = f"{record.container_port}/tcp"
         container_name = self._agent_container_name(record.agent_id)
@@ -327,6 +359,9 @@ class ManagedAgentManager:
         try:
             container = self._docker.containers.get(container_name)
             container.reload()
+            if not self._runtime_container_compatible(container, env, network_name):
+                container.remove(force=True)
+                raise NotFound("incompatible runtime container")
             if container.status != "running":
                 container.start()
         except NotFound:
@@ -336,6 +371,7 @@ class ManagedAgentManager:
                 name=container_name,
                 command=command,
                 environment=env,
+                network=network_name,
                 ports={port_key: ("127.0.0.1", 0)},
                 extra_hosts={"host.docker.internal": "host-gateway"},
                 volumes={record.config_path: {"bind": record.config_mount_path, "mode": "ro"}},
@@ -463,9 +499,11 @@ class ManagedAgentManager:
                     except ValueError:
                         container_port = 10001
                     now = self._now()
+                    image_obj = container.image
+                    tags = image_obj.tags if image_obj is not None else []
                     existing = ManagedAgentRecord(
                         agent_id=agent_id,
-                        image=container.image.tags[0] if container.image.tags else "unknown",
+                        image=tags[0] if tags else "unknown",
                         config_path=config_path,
                         config_mount_path=config_mount_path,
                         container_port=container_port,
@@ -528,6 +566,75 @@ class ManagedAgentManager:
     def _agent_container_name(self, agent_id: str) -> str:
         return f"buddy-agent-{self._slug(agent_id)}"
 
+    def _agent_dind_name(self, agent_id: str) -> str:
+        return f"buddy-agent-dind-{self._slug(agent_id)}"
+
+    def _agent_network_name(self, agent_id: str) -> str:
+        return f"buddy-agent-net-{self._slug(agent_id)}"
+
+    def _ensure_agent_network(self, agent_id: str) -> None:
+        network_name = self._agent_network_name(agent_id)
+        try:
+            self._docker.networks.get(network_name)
+        except NotFound:
+            self._docker.networks.create(
+                network_name,
+                driver="bridge",
+                labels={
+                    "buddy.managed_agent_network": "true",
+                    "buddy.agent_id": agent_id,
+                },
+            )
+
+    def _ensure_dind_container(self, agent_id: str, network_name: str) -> None:
+        dind_name = self._agent_dind_name(agent_id)
+        dind_image = os.environ.get("BUDDY_DIND_IMAGE", "docker:27-dind")
+
+        try:
+            dind = self._docker.containers.get(dind_name)
+            dind.reload()
+            networks = dind.attrs.get("NetworkSettings", {}).get("Networks", {})
+            if network_name not in networks:
+                network = self._docker.networks.get(network_name)
+                network.connect(dind)
+            if dind.status != "running":
+                dind.start()
+            return
+        except NotFound:
+            pass
+
+        self._docker.containers.run(
+            dind_image,
+            detach=True,
+            name=dind_name,
+            command=["dockerd", "--host=tcp://0.0.0.0:2375"],
+            environment={"DOCKER_TLS_CERTDIR": ""},
+            privileged=True,
+            network=network_name,
+            labels={
+                "buddy.managed_agent_dind": "true",
+                "buddy.agent_id": agent_id,
+            },
+        )
+
+    @staticmethod
+    def _runtime_container_compatible(container, env: dict[str, str], network_name: str) -> bool:
+        container_env = container.attrs.get("Config", {}).get("Env", [])
+        if not isinstance(container_env, list):
+            return False
+
+        expected_docker_host = env.get("DOCKER_HOST")
+        if isinstance(expected_docker_host, str):
+            expected_entry = f"DOCKER_HOST={expected_docker_host}"
+            if expected_entry not in container_env:
+                return False
+
+        networks = container.attrs.get("NetworkSettings", {}).get("Networks", {})
+        if network_name not in networks:
+            return False
+
+        return True
+
     def _prune_stale_agent_containers(self, agent_id: str) -> None:
         canonical_name = self._agent_container_name(agent_id)
         managed_containers = self._docker.containers.list(
@@ -535,6 +642,20 @@ class ManagedAgentManager:
             filters={"label": ["buddy.managed_agent=true", f"buddy.agent_id={agent_id}"]},
         )
         for container in managed_containers:
+            container.reload()
+            if container.name == canonical_name:
+                continue
+            if container.status == "running":
+                continue
+            container.remove(force=True)
+
+    def _prune_stale_dind_containers(self, agent_id: str) -> None:
+        canonical_name = self._agent_dind_name(agent_id)
+        dind_containers = self._docker.containers.list(
+            all=True,
+            filters={"label": ["buddy.managed_agent_dind=true", f"buddy.agent_id={agent_id}"]},
+        )
+        for container in dind_containers:
             container.reload()
             if container.name == canonical_name:
                 continue

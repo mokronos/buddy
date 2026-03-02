@@ -9,9 +9,10 @@ from devtools import pprint
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic_ai import Agent
+from starlette.concurrency import run_in_threadpool
 
 from buddy.runtime.a2a.executor import PyAIAgentExecutor
-from buddy.environment.runtime_api import RuntimeAPIEnvironmentManager
+from buddy.environment.manager import EnvironmentManager
 from buddy.session_store import SessionStore
 
 load_dotenv()
@@ -26,7 +27,6 @@ if base_url.endswith("/a2a"):
 
 
 session_store = SessionStore(Path("sessions.db"))
-internal_runtime_token = os.environ.get("BUDDY_INTERNAL_RUNTIME_TOKEN")
 
 
 def _create_agent_card(name: str, url: str) -> AgentCard:
@@ -48,13 +48,13 @@ def _create_a2a_runtime_app(
     agent: Agent,
     card_name: str,
     card_url: str,
-    runtime_manager: RuntimeAPIEnvironmentManager,
+    environment_manager: EnvironmentManager,
 ) -> FastAPI:
     request_handler = DefaultRequestHandler(
         agent_executor=PyAIAgentExecutor(
             agent=agent,
             session_store=session_store,
-            environment_manager=runtime_manager,
+            environment_manager=environment_manager,
         ),
         task_store=InMemoryTaskStore(),
     )
@@ -71,21 +71,31 @@ def _create_a2a_runtime_app(
 
 
 def create_runtime_app(agents: dict[str, Agent]) -> FastAPI:
-    runtime_api_base_url = os.environ.get("BUDDY_RUNTIME_API_BASE_URL")
-    if not runtime_api_base_url:
-        raise RuntimeError("BUDDY_RUNTIME_API_BASE_URL is required for runtime app")
-
     if not agents:
         raise RuntimeError("Runtime app requires at least one configured agent")
 
     agent_key = next(iter(agents.keys()))
     agent = agents[agent_key]
-    runtime_manager = RuntimeAPIEnvironmentManager(base_url=runtime_api_base_url, token=internal_runtime_token)
+    environment_manager = EnvironmentManager(
+        image_ref=os.environ.get("BUDDY_ENV_IMAGE", "environ:latest"),
+        warm_containers=max(0, int(os.environ.get("BUDDY_ENV_WARM_CONTAINERS", "0"))),
+    )
     card_name = agent.name or f"buddy-{agent_key}"
 
-    return _create_a2a_runtime_app(
+    app = _create_a2a_runtime_app(
         agent=agent,
         card_name=card_name,
         card_url=base_url,
-        runtime_manager=runtime_manager,
+        environment_manager=environment_manager,
     )
+
+    @app.on_event("startup")
+    async def _startup() -> None:
+        if environment_manager.warm_containers > 0:
+            await run_in_threadpool(environment_manager.start)
+
+    @app.on_event("shutdown")
+    async def _shutdown() -> None:
+        await run_in_threadpool(environment_manager.stop)
+
+    return app

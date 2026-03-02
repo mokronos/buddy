@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 from buddy.control_plane.external_agents import ExternalAgentManager
 from buddy.control_plane.managed_agents import ManagedAgentManager
-from buddy.environment.manager import EnvironmentManager
 from buddy.session_store import SessionStore
 
 
@@ -12,10 +11,8 @@ class ServerState:
     session_store: SessionStore
     external_agent_manager: ExternalAgentManager
     managed_agent_manager: ManagedAgentManager | None
-    local_environment_manager: EnvironmentManager | None
     default_agent_key: str | None
     agent_index: list[dict[str, str]]
-    internal_runtime_token: str | None
 
     def build_managed_entry(self, agent_id: str, status: str) -> dict[str, str]:
         mount_path = f"/a2a/managed/{agent_id}"

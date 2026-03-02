@@ -2,7 +2,7 @@ import docker
 from docker.errors import ImageNotFound, NotFound
 from docker.models.containers import Container
 
-DOCKERFILE = "./src/buddy/tools/environment/docker/Dockerfile"
+DOCKERFILE = "./src/buddy/environment/docker/Dockerfile"
 IMAGE = "environ"
 TAG = "latest"
 CONTAINER_NAME = "environ-example"

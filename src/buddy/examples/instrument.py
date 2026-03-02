@@ -7,7 +7,7 @@ import asyncio
 from langfuse import get_client
 from pydantic_ai import Agent, AgentRunResultEvent, AgentStreamEvent, RunContext
 
-from buddy.models import create_codex_model
+from buddy.runtime.models import create_codex_model
 
 langfuse = get_client()
 

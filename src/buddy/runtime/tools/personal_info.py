@@ -1,4 +1,4 @@
-from buddy.tools.tool import Tool
+from buddy.runtime.tools.tool import Tool
 
 
 class PersonalInfoTool(Tool):

@@ -8,14 +8,14 @@ from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 
 from buddy.runtime.deps import AgentDeps
-from buddy.tools.environment import (
+from buddy.runtime.tools.environment import (
     environment_exec,
     environment_patch_file,
     environment_read_file,
     environment_write_file,
 )
-from buddy.tools.todo import todoadd, tododelete, todoread, todoupdate
-from buddy.tools.web_search import fetch_web_page, web_search
+from buddy.runtime.tools.todo import todoadd, tododelete, todoread, todoupdate
+from buddy.runtime.tools.web_search import fetch_web_page, web_search
 
 load_dotenv()
 

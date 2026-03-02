@@ -1,8 +1,8 @@
-import { useChat } from "~/context/ChatContext";
+import { useAgents } from "~/context/AgentsContext";
 import AgentCard from "~/components/AgentCard";
 
 export default function Sidebar() {
-  const { agents, activeAgentKey, activeAgentName, setActiveAgentKey } = useChat();
+  const { agents, activeAgentKey, activeAgentName, setActiveAgentKey } = useAgents();
 
   return (
     <div class="flex h-full w-1/4 min-w-72 flex-col gap-4 border-r border-zinc-700 bg-zinc-900 p-4 text-zinc-200">

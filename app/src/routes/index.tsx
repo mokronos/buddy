@@ -6,10 +6,10 @@ import MessageBox from "~/components/MessageBox";
 import InputBox from "~/components/InputBox";
 import TopTabs from "~/components/TopTabs";
 import TaskTabs from "~/components/TaskTabs";
-import { useChat } from "~/context/ChatContext";
+import { useAgents } from "~/context/AgentsContext";
 
 export default function Home() {
-  const { refreshAgents } = useChat();
+  const { refreshAgents } = useAgents();
 
   onMount(() => {
     void refreshAgents();

@@ -1,4 +1,4 @@
-import type { AgentEndpoint } from "~/context/ChatContext";
+import type { AgentEndpoint } from "~/context/AgentsContext";
 
 interface AgentCardProps {
   agent: AgentEndpoint;

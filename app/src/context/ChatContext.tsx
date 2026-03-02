@@ -1,7 +1,7 @@
 import type { MessageSendParams } from "@a2a-js/sdk";
-import { useQueryClient } from "@tanstack/solid-query";
 import {
   createContext,
+  createEffect,
   createMemo,
   createSignal,
   useContext,
@@ -9,35 +9,14 @@ import {
   type JSX,
   type Setter,
 } from "solid-js";
-import { readJson } from "~/a2a/http";
-import {
-  AgentCardSchema,
-  AgentsIndexResponseSchema,
-  type AgentCardPayload,
-} from "~/a2a/schemas";
-import { createA2AClient, DEFAULT_A2A_BASE_URL } from "~/a2a/client";
+import { createA2AClient } from "~/a2a/client";
+import { useAgents } from "~/context/AgentsContext";
 import type { Message } from "~/data/sampleMessages";
-
-export interface AgentEndpoint {
-  key: string;
-  name: string;
-  mountPath: string;
-  agentCardPath: string;
-  url: string;
-  description: string | null;
-  version: string | null;
-  skills: string[];
-}
 
 interface ChatContextValue {
   messages: Accessor<Message[]>;
   sendMessage: (content: string) => Promise<void>;
   isSending: Accessor<boolean>;
-  refreshAgents: () => Promise<void>;
-  agents: Accessor<AgentEndpoint[]>;
-  activeAgentKey: Accessor<string>;
-  activeAgentName: Accessor<string>;
-  setActiveAgentKey: (agentKey: string) => void;
   tasks: Accessor<{ id: string; label: string; isSending: boolean }[]>;
   activeTaskId: Accessor<string>;
   setActiveTaskId: (taskId: string) => void;
@@ -129,12 +108,6 @@ function toPrettyText(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-interface AgentCardDetails {
-  description: string | null;
-  version: string | null;
-  skills: string[];
-}
-
 interface AgentConversationState {
   messages: Message[];
   isSending: boolean;
@@ -166,104 +139,6 @@ function createWorkspace(initialMessages: Message[] = []): AgentWorkspaceState {
     taskOrder: [defaultTaskId],
     nextTaskNumber: 2,
   };
-}
-
-function toNormalizedString(value: string | null | undefined): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function toAgentCardDetails(payload: AgentCardPayload): AgentCardDetails {
-  const skills = (payload.skills ?? [])
-    .map((skill) => toNormalizedString(skill.name) ?? toNormalizedString(skill.id))
-    .filter((entry): entry is string => entry !== null);
-
-  return {
-    description: toNormalizedString(payload.description),
-    version: toNormalizedString(payload.version),
-    skills,
-  };
-}
-
-function resolveAgentCardUrl(agentCardPath: string): string {
-  if (agentCardPath.startsWith("http://") || agentCardPath.startsWith("https://")) {
-    return agentCardPath;
-  }
-
-  if (agentCardPath.startsWith("/")) {
-    return `${DEFAULT_A2A_BASE_URL}${agentCardPath}`;
-  }
-
-  return `${DEFAULT_A2A_BASE_URL}/${agentCardPath}`;
-}
-
-interface AgentsIndexPayload {
-  defaultAgentKey: string | null;
-  agents: AgentEndpoint[];
-}
-
-async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function fetchAgentsIndex(): Promise<AgentsIndexPayload> {
-  const response = await fetchWithTimeout(`${DEFAULT_A2A_BASE_URL}/agents`, { cache: "no-store" }, 5000);
-  const payload = await readJson(response, AgentsIndexResponseSchema);
-
-  const agents = payload.agents.map((entry) => ({
-    key: entry.key,
-    name: entry.name,
-    mountPath: entry.mountPath,
-    agentCardPath: entry.agentCardPath,
-    url: entry.url,
-    description: null,
-    version: null,
-    skills: [],
-  }));
-
-  if (agents.length === 0) {
-    throw new Error("No agents returned from /agents");
-  }
-
-  const defaultAgentKey =
-    typeof payload.defaultAgentKey === "string" && agents.some((agent) => agent.key === payload.defaultAgentKey)
-      ? payload.defaultAgentKey
-      : null;
-
-  return {
-    defaultAgentKey,
-    agents,
-  };
-}
-
-async function fetchAgentCardDetails(agentCardPath: string): Promise<AgentCardDetails> {
-  const cardResponse = await fetchWithTimeout(resolveAgentCardUrl(agentCardPath), { cache: "no-store" }, 4000);
-  try {
-    const cardPayload = await readJson(cardResponse, AgentCardSchema);
-    return toAgentCardDetails(cardPayload);
-  } catch {
-    return {
-      description: null,
-      version: null,
-      skills: [],
-    };
-  }
 }
 
 function upsertAIMessage(
@@ -329,16 +204,9 @@ function upsertThinkingMessage(
 }
 
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
-  let refreshRequestId = 0;
-  const [workspaces, setWorkspaces] = createSignal<Record<string, AgentWorkspaceState>>({
-    buddy: createWorkspace(props.messages || []),
-  });
-  const [activeTaskIds, setActiveTaskIds] = createSignal<Record<string, string>>({
-    buddy: "task-1",
-  });
-  const [agents, setAgents] = createSignal<AgentEndpoint[]>([]);
-  const [activeAgentKey, setActiveAgentKeySignal] = createSignal("buddy");
-  const [activeAgentName, setActiveAgentName] = createSignal("buddy");
+  const { agents, activeAgentKey, refreshAgents } = useAgents();
+  const [workspaces, setWorkspaces] = createSignal<Record<string, AgentWorkspaceState>>({});
+  const [activeTaskIds, setActiveTaskIds] = createSignal<Record<string, string>>({});
 
   const messages = createMemo(() => {
     const activeKey = activeAgentKey();
@@ -427,111 +295,32 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     return nextTask;
   };
 
-  const queryClient = useQueryClient();
-
-  const applyAgentsPayload = (payload: AgentsIndexPayload): void => {
-    const requestId = ++refreshRequestId;
-    const loadedAgents = payload.agents;
-
-    setAgents(loadedAgents);
-
-    const currentActiveKey = activeAgentKey();
-    const fallbackAgentKey =
-      typeof payload.defaultAgentKey === "string" && loadedAgents.some((agent) => agent.key === payload.defaultAgentKey)
-        ? payload.defaultAgentKey
-        : loadedAgents[0].key;
-    const nextActiveKey = loadedAgents.some((agent) => agent.key === currentActiveKey)
-      ? currentActiveKey
-      : fallbackAgentKey;
-    const nextActiveAgent =
-      loadedAgents.find((agent) => agent.key === nextActiveKey) ?? loadedAgents[0];
-    setActiveAgentKeySignal(nextActiveAgent.key);
-    setActiveAgentName(nextActiveAgent.name);
-
-    setWorkspaces((current) => {
-      const next = { ...current };
-      for (const agent of loadedAgents) {
-        if (!next[agent.key]) {
-          next[agent.key] = createWorkspace();
-        }
-      }
-      return next;
-    });
-
-    setActiveTaskIds((current) => {
-      const next = { ...current };
-      for (const agent of loadedAgents) {
-        if (!next[agent.key]) {
-          next[agent.key] = "task-1";
-        }
-      }
-      return next;
-    });
-
-    void (async () => {
-      const loadedAgentsWithDetails = await Promise.all(
-        loadedAgents.map(async (agent) => {
-          try {
-            const details = await queryClient.fetchQuery({
-              queryKey: ["agents", "card", agent.agentCardPath],
-              queryFn: () => fetchAgentCardDetails(agent.agentCardPath),
-            });
-            return {
-              ...agent,
-              description: details.description,
-              version: details.version,
-              skills: details.skills,
-            };
-          } catch {
-            return agent;
-          }
-        }),
-      );
-
-      if (requestId !== refreshRequestId) {
-        return;
-      }
-
-      setAgents(loadedAgentsWithDetails);
-    })();
-  };
-
-  const refreshAgents = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: ["agents"] });
-    const payload = await queryClient.fetchQuery({
-      queryKey: ["agents", "index"],
-      queryFn: fetchAgentsIndex,
-    });
-    applyAgentsPayload(payload);
-  };
-
-  const setActiveAgentKey = (agentKey: string): void => {
-    const selectedAgent = agents().find((agent) => agent.key === agentKey);
-    if (!selectedAgent) {
+  createEffect(() => {
+    const targetAgentKey = activeAgentKey();
+    if (!targetAgentKey) {
       return;
     }
-    setWorkspaces((current) => {
-      if (current[selectedAgent.key]) {
-        return current;
-      }
 
-      return {
-        ...current,
-        [selectedAgent.key]: createWorkspace(),
-      };
-    });
-    setActiveTaskIds((current) => {
-      if (current[selectedAgent.key]) {
+    setWorkspaces((current) => {
+      if (current[targetAgentKey]) {
         return current;
       }
       return {
         ...current,
-        [selectedAgent.key]: "task-1",
+        [targetAgentKey]: createWorkspace(props.messages || []),
       };
     });
-    setActiveAgentKeySignal(selectedAgent.key);
-    setActiveAgentName(selectedAgent.name);
-  };
+
+    setActiveTaskIds((current) => {
+      if (current[targetAgentKey]) {
+        return current;
+      }
+      return {
+        ...current,
+        [targetAgentKey]: "task-1",
+      };
+    });
+  });
 
   const setActiveTaskId = (taskId: string): void => {
     const targetAgentKey = activeAgentKey();
@@ -552,6 +341,10 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
   const createTask = (): void => {
     const targetAgentKey = activeAgentKey();
+    if (!targetAgentKey) {
+      return;
+    }
+
     let nextTaskId = "";
     updateWorkspace(targetAgentKey, (workspace) => {
       const taskId = `task-${workspace.nextTaskNumber}`;
@@ -576,6 +369,10 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
   const sendMessage = async (content: string): Promise<void> => {
     const targetAgentKey = activeAgentKey();
+    if (!targetAgentKey) {
+      throw new Error("No A2A agents available. Start a managed agent first.");
+    }
+
     const targetWorkspace = workspaces()[targetAgentKey] ?? createWorkspace();
     const targetTaskId = activeTaskIds()[targetAgentKey] ?? targetWorkspace.taskOrder[0] ?? "task-1";
     const activeContextId =
@@ -821,11 +618,6 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
         messages,
         sendMessage,
         isSending,
-        refreshAgents,
-        agents,
-        activeAgentKey,
-        activeAgentName,
-        setActiveAgentKey,
         tasks,
         activeTaskId,
         setActiveTaskId,

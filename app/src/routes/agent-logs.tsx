@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/solid-query";
-import { For, createEffect, createMemo } from "solid-js";
+import { For, createEffect, createMemo, createSignal, onMount } from "solid-js";
 
 import { getManagedAgentLogs, listManagedAgents, type ManagedAgent } from "~/a2a/managedAgents";
 import TopTabs from "~/components/TopTabs";
+import Skeleton from "~/components/ui/Skeleton";
 
 interface AgentLogEntry {
   agent: ManagedAgent;
@@ -10,31 +11,59 @@ interface AgentLogEntry {
 }
 
 async function fetchManagedAgentLogs(): Promise<AgentLogEntry[]> {
-  const agents = await listManagedAgents();
-  return Promise.all(
-    agents.map(async (agent) => {
-      const payload = await getManagedAgentLogs(agent.agent_id, 250);
+  let agents: ManagedAgent[] = [];
+  try {
+    agents = await listManagedAgents();
+  } catch {
+    return [];
+  }
+
+  const payloads = await Promise.allSettled(agents.map((agent) => getManagedAgentLogs(agent.agent_id, 250)));
+
+  return payloads.map((payload, index) => {
+    const agent = agents[index];
+    if (payload.status === "fulfilled") {
       return {
-        agent: payload.agent,
-        logs: payload.logs,
+        agent: payload.value.agent,
+        logs: payload.value.logs,
       };
-    }),
-  );
+    }
+
+    const reason = payload.reason;
+    const message = reason instanceof Error ? reason.message : "Failed to fetch logs";
+    return {
+      agent,
+      logs: `(failed to load logs: ${message})`,
+    };
+  });
 }
 
 export default function AgentLogsPage() {
+  const [isClientReady, setIsClientReady] = createSignal(false);
+  const [lastSuccessfulEntries, setLastSuccessfulEntries] = createSignal<AgentLogEntry[]>([]);
+  onMount(() => setIsClientReady(true));
+
   const logsQuery = useQuery(() => ({
     queryKey: ["agents", "managed", "logs"],
     queryFn: fetchManagedAgentLogs,
     refetchInterval: 2000,
     refetchOnWindowFocus: false,
+    suspense: false,
+    throwOnError: false,
   }));
 
   const logContainers = new Map<string, HTMLPreElement>();
   const shouldFollowLogs = new Map<string, boolean>();
   const scrollThreshold = 24;
+  const entries = createMemo(() => {
+    if (!isClientReady()) {
+      return [];
+    }
+    return logsQuery.data ?? lastSuccessfulEntries();
+  });
+  const isInitialLoading = () => !isClientReady() || (logsQuery.isPending && entries().length === 0);
+  const isRefreshing = () => isClientReady() && logsQuery.isFetching && entries().length > 0;
 
-  const entries = createMemo(() => logsQuery.data ?? []);
   const agentOrder = createMemo(() => entries().map((entry) => entry.agent.agent_id));
   const entriesById = createMemo(() => {
     const next: Record<string, AgentLogEntry> = {};
@@ -80,6 +109,12 @@ export default function AgentLogsPage() {
     syncScrollingAfterRefresh(agentOrder());
   });
 
+  createEffect(() => {
+    if (logsQuery.data) {
+      setLastSuccessfulEntries(logsQuery.data);
+    }
+  });
+
   const lastUpdated = createMemo(() => {
     if (!logsQuery.dataUpdatedAt) {
       return "";
@@ -112,15 +147,34 @@ export default function AgentLogsPage() {
             </button>
           </div>
 
-          {logsQuery.isPending ? <p class="text-zinc-400">Loading logs...</p> : null}
-          {logsQuery.isError ? (
-            <p class="rounded-md bg-red-900/30 p-2 text-sm text-red-300">
-              {logsQuery.error instanceof Error ? logsQuery.error.message : "Failed to load agent logs"}
-            </p>
-          ) : null}
           {lastUpdated() ? <p class="text-xs text-zinc-500">Last updated: {lastUpdated()}</p> : null}
+          {isRefreshing() ? <p class="text-xs text-zinc-500">Refreshing logs...</p> : null}
 
           <div class="grid gap-4">
+            {isInitialLoading() && agentOrder().length === 0 ? (
+              <>
+                <section class="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                  <div class="mb-2 flex items-center justify-between gap-3">
+                    <div class="space-y-2">
+                      <Skeleton class="h-4 w-32" />
+                      <Skeleton class="h-3 w-48" />
+                    </div>
+                    <Skeleton class="h-6 w-20" />
+                  </div>
+                  <Skeleton class="h-44 w-full" />
+                </section>
+                <section class="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                  <div class="mb-2 flex items-center justify-between gap-3">
+                    <div class="space-y-2">
+                      <Skeleton class="h-4 w-28" />
+                      <Skeleton class="h-3 w-44" />
+                    </div>
+                    <Skeleton class="h-6 w-20" />
+                  </div>
+                  <Skeleton class="h-44 w-full" />
+                </section>
+              </>
+            ) : null}
             <For each={agentOrder()}>
               {(agentId) => {
                 const entry = () => entriesById()[agentId];
@@ -150,8 +204,8 @@ export default function AgentLogsPage() {
               }}
             </For>
 
-            {agentOrder().length === 0 && !logsQuery.isPending ? (
-              <p class="text-sm text-zinc-400">No managed agents found.</p>
+            {agentOrder().length === 0 && !isInitialLoading() ? (
+              <p class="text-sm text-zinc-400">0 agents available for logs.</p>
             ) : null}
           </div>
         </div>

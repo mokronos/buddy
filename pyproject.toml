@@ -1,7 +1,7 @@
 [project]
 name = "buddy"
 version = "0.0.1"
-description = "An autonomous LLM agent with comprehensive system tools"
+description = "CLI wrapper for Buddy control-plane/runtime workspace"
 authors = [{ name = "Sebastian Hirt", email = "sebastian@hirts.de" }]
 readme = "README.md"
 keywords = ['python']
@@ -16,27 +16,23 @@ classifiers = [
 ]
 
 dependencies = [
-    "rich>=10.0.0",
-    "requests>=2.31.0",
-    "python-dotenv>=1.0.1",
     "a2a-sdk>=0.2.8",
-    "spotipy>=2.25.1",
-    "fastmcp>=2.11.2",
-    "beautifulsoup4>=4.14.0",
-    "cloudscraper>=1.2.71",
-    "pydantic-ai",
-    "fastapi[standard]>=0.119.1",
-    "devtools>=0.12.2",
-    "pydantic-ai-slim[google]>=1.18.0",
-    "arize-phoenix-otel>=0.14.0",
-    "openinference-instrumentation-pydantic-ai>=0.1.11",
-    "opentelemetry-sdk>=1.39.1",
-    "opentelemetry-exporter-otlp>=1.39.1",
-    "opentelemetry-api>=1.39.1",
-    "langfuse>=3.12.1",
-    "docker>=7.1.0",
-    "httpx>=0.28.1",
+    "typer>=0.21.1",
+    "buddy-control-plane",
+    "buddy-runtime",
 ]
+
+[tool.uv.workspace]
+members = [
+    "packages/buddy-control-plane",
+    "packages/buddy-runtime",
+    "packages/buddy-shared",
+]
+
+[tool.uv.sources]
+buddy-control-plane = { workspace = true }
+buddy-runtime = { workspace = true }
+buddy-shared = { workspace = true }
 
 [project.urls]
 Homepage = "https://mokronos.github.io/buddy/"

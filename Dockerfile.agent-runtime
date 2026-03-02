@@ -6,13 +6,16 @@ WORKDIR /app
 
 COPY pyproject.toml /app/pyproject.toml
 COPY uv.lock /app/uv.lock
+COPY packages/buddy-control-plane/pyproject.toml /app/packages/buddy-control-plane/pyproject.toml
+COPY packages/buddy-runtime/pyproject.toml /app/packages/buddy-runtime/pyproject.toml
+COPY packages/buddy-shared/pyproject.toml /app/packages/buddy-shared/pyproject.toml
 
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --package buddy-runtime --no-install-workspace
 
 COPY . /app
 
-RUN uv sync --frozen
+RUN uv sync --frozen --package buddy-runtime
 
 ENV PORT=10001
 
-CMD ["uv", "run", "src/buddy/runtime/main.py"]
+CMD ["uv", "run", "--package", "buddy-runtime", "python", "-m", "buddy.runtime.main"]

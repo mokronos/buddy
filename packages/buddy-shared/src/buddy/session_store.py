@@ -1,11 +1,9 @@
 import json
+from importlib import import_module
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-from pydantic_ai import ModelMessagesTypeAdapter
-from pydantic_core import to_jsonable_python
 
 from buddy.data_dirs import buddy_data_dir
 
@@ -57,10 +55,13 @@ class SessionStore:
             )
 
     def load_messages(self, session_id: str) -> list[Any]:
+        pydantic_ai = import_module("pydantic_ai")
+        model_messages_adapter = getattr(pydantic_ai, "ModelMessagesTypeAdapter")
+
         payloads = self.load_messages_payload(session_id)
         if not payloads:
             return []
-        return ModelMessagesTypeAdapter.validate_python(payloads)
+        return model_messages_adapter.validate_python(payloads)
 
     def load_messages_payload(self, session_id: str) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -71,6 +72,9 @@ class SessionStore:
         return [json.loads(item[0]) for item in rows]
 
     def save_messages(self, session_id: str, messages: list[Any] | object) -> None:
+        pydantic_core = import_module("pydantic_core")
+        to_jsonable_python = getattr(pydantic_core, "to_jsonable_python")
+
         payloads = to_jsonable_python(messages)
         if not isinstance(payloads, list):
             payloads = []

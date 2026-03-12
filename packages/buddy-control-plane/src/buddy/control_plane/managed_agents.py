@@ -1,7 +1,5 @@
-import json
 import os
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Lock
 from time import perf_counter, sleep
@@ -9,10 +7,20 @@ from urllib.parse import urlparse
 
 import docker
 import requests
+from buddy.control_plane.manager_support import (
+    emit_operation_event,
+    load_json_registry,
+    save_json_registry,
+    utc_now_iso,
+)
 from buddy.control_plane.validation import validate_agent_id
 from buddy.data_dirs import buddy_data_dir
-from buddy.shared.logging import emit_event, get_logger
-from buddy.shared.runtime_config import load_runtime_agent_config, parse_runtime_agent_config_yaml, runtime_agent_card_path
+from buddy.shared.logging import get_logger
+from buddy.shared.runtime_config import (
+    load_runtime_agent_config,
+    parse_runtime_agent_config_yaml,
+    runtime_agent_card_path,
+)
 from docker.errors import NotFound
 
 logger = get_logger(__name__)
@@ -180,12 +188,7 @@ class ManagedAgentManager:
                         command=command,
                     )
                 except Exception as error:
-                    failed = ManagedAgentRecord(**{
-                        **asdict(record),
-                        "status": "failed",
-                        "last_error": str(error),
-                        "updated_at": self._now(),
-                    })
+                    failed = replace(record, status="failed", last_error=str(error), updated_at=self._now())
                     self._records[normalized_agent_id] = failed
                     self._save_registry()
                     raise
@@ -231,12 +234,7 @@ class ManagedAgentManager:
                     except NotFound:
                         pass
 
-                updated = ManagedAgentRecord(**{
-                    **asdict(record),
-                    "status": "stopped",
-                    "last_error": None,
-                    "updated_at": self._now(),
-                })
+                updated = replace(record, status="stopped", last_error=None, updated_at=self._now())
                 self._records[normalized_agent_id] = updated
                 self._save_registry()
                 result = updated
@@ -330,11 +328,7 @@ class ManagedAgentManager:
                         "container_port": runtime_config.a2a.port,
                         "a2a_mount_path": runtime_config.a2a.mount_path,
                     }
-                updated = ManagedAgentRecord(**{
-                    **asdict(record),
-                    **updated_fields,
-                    "updated_at": self._now(),
-                })
+                updated = replace(record, **updated_fields, updated_at=self._now())
                 self._records[normalized_agent_id] = updated
                 self._save_registry()
 
@@ -399,13 +393,13 @@ class ManagedAgentManager:
                     logs = container.logs(tail=tail, timestamps=True).decode("utf-8", errors="replace")
                     result = refreshed
                 except NotFound:
-                    missing = ManagedAgentRecord(**{
-                        **asdict(refreshed),
-                        "container_id": None,
-                        "host_port": None,
-                        "status": "missing",
-                        "updated_at": self._now(),
-                    })
+                    missing = replace(
+                        refreshed,
+                        container_id=None,
+                        host_port=None,
+                        status="missing",
+                        updated_at=self._now(),
+                    )
                     with self._lock:
                         self._records[normalized_agent_id] = missing
                         self._save_registry()
@@ -524,16 +518,16 @@ class ManagedAgentManager:
                 container.remove(force=True)
             raise RuntimeError(f"Managed agent '{record.agent_id}' failed to become ready: {error}") from error
 
-        return ManagedAgentRecord(**{
-            **asdict(record),
-            "container_port": runtime_config.a2a.port,
-            "a2a_mount_path": runtime_config.a2a.mount_path,
-            "container_id": container.id,
-            "host_port": host_port,
-            "status": container.status,
-            "last_error": None,
-            "updated_at": self._now(),
-        })
+        return replace(
+            record,
+            container_port=runtime_config.a2a.port,
+            a2a_mount_path=runtime_config.a2a.mount_path,
+            container_id=container.id,
+            host_port=host_port,
+            status=container.status,
+            last_error=None,
+            updated_at=self._now(),
+        )
 
     def _refresh_status(self, record: ManagedAgentRecord) -> ManagedAgentRecord:
         if not record.container_id:
@@ -542,35 +536,24 @@ class ManagedAgentManager:
             container = self._docker.containers.get(record.container_id)
             container.reload()
         except NotFound:
-            return ManagedAgentRecord(**{
-                **asdict(record),
-                "container_id": None,
-                "host_port": None,
-                "status": "missing",
-                "last_error": None,
-                "updated_at": self._now(),
-            })
+            return replace(
+                record,
+                container_id=None,
+                host_port=None,
+                status="missing",
+                last_error=None,
+                updated_at=self._now(),
+            )
 
         status = container.status
         if status != "running":
-            return ManagedAgentRecord(**{
-                **asdict(record),
-                "status": status,
-                "last_error": None,
-                "updated_at": self._now(),
-            })
+            return replace(record, status=status, last_error=None, updated_at=self._now())
 
         port_key = f"{record.container_port}/tcp"
         ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
         bindings = ports.get(port_key)
         host_port = int(bindings[0]["HostPort"]) if bindings else None
-        return ManagedAgentRecord(**{
-            **asdict(record),
-            "host_port": host_port,
-            "status": status,
-            "last_error": None,
-            "updated_at": self._now(),
-        })
+        return replace(record, host_port=host_port, status=status, last_error=None, updated_at=self._now())
 
     def _write_config(self, agent_id: str, config_yaml: str) -> Path:
         config_dir = buddy_data_dir() / "agents" / agent_id
@@ -580,23 +563,7 @@ class ManagedAgentManager:
         return config_path
 
     def _load_registry(self) -> None:
-        if not self._registry_path.exists():
-            self._records = {}
-            return
-        raw = self._registry_path.read_text(encoding="utf-8")
-        data = json.loads(raw) if raw else {}
-        if not isinstance(data, dict):
-            self._records = {}
-            return
-        loaded: dict[str, ManagedAgentRecord] = {}
-        for agent_id, record_data in data.items():
-            if not isinstance(record_data, dict):
-                continue
-            try:
-                loaded[agent_id] = ManagedAgentRecord(**record_data)
-            except TypeError:
-                continue
-        self._records = loaded
+        self._records = load_json_registry(self._registry_path, load_record=self._load_record)
 
     def reconcile_from_docker(self) -> list[ManagedAgentRecord]:
         start_time = perf_counter()
@@ -647,12 +614,7 @@ class ManagedAgentManager:
 
                 refreshed = self._refresh_status(existing)
                 if refreshed.container_id is None:
-                    refreshed = ManagedAgentRecord(**{
-                        **asdict(refreshed),
-                        "container_id": container.id,
-                        "status": container.status,
-                        "updated_at": self._now(),
-                    })
+                    refreshed = replace(refreshed, container_id=container.id, status=container.status, updated_at=self._now())
                     refreshed = self._refresh_status(refreshed)
 
                 self._records[agent_id] = refreshed
@@ -696,8 +658,7 @@ class ManagedAgentManager:
         raise RuntimeError(f"Managed agent '{agent_id}' failed readiness check at {agent_card_url}")
 
     def _save_registry(self) -> None:
-        payload = {agent_id: asdict(record) for agent_id, record in self._records.items()}
-        self._registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        save_json_registry(self._registry_path, self._records)
 
     def _ensure_agent_absent(self, agent_id: str) -> None:
         if agent_id in self._records:
@@ -712,6 +673,13 @@ class ManagedAgentManager:
     @staticmethod
     def _raise_missing_agent(agent_id: str) -> None:
         raise ValueError(f"Agent '{agent_id}' does not exist")
+
+    @staticmethod
+    def _load_record(_agent_id: str, record_data: dict[str, object]) -> ManagedAgentRecord | None:
+        try:
+            return ManagedAgentRecord(**record_data)
+        except TypeError:
+            return None
 
     @staticmethod
     def _record_log_fields(record: ManagedAgentRecord) -> dict[str, object]:
@@ -740,14 +708,13 @@ class ManagedAgentManager:
         error: Exception | None = None,
         **fields: object,
     ) -> None:
-        emit_event(
+        emit_operation_event(
             logger,
             event,
-            level=level,
-            duration_ms=round((perf_counter() - start_time) * 1000, 3),
+            start_time=start_time,
             outcome=outcome,
-            error_type=type(error).__name__ if error is not None else None,
-            error_message=str(error) if error is not None else None,
+            level=level,
+            error=error,
             **fields,
         )
 
@@ -775,4 +742,4 @@ class ManagedAgentManager:
 
     @staticmethod
     def _now() -> str:
-        return datetime.now(tz=UTC).isoformat()
+        return utc_now_iso()

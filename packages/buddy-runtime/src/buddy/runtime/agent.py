@@ -1,3 +1,4 @@
+import logging
 import os
 from time import sleep
 from typing import Any, NoReturn, cast
@@ -6,13 +7,47 @@ from buddy.runtime.tools.todo import todoadd, tododelete, todoread, todoupdate
 from buddy.runtime.tools.web_search import fetch_web_page, web_search
 from dotenv import load_dotenv
 from langfuse import Langfuse
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.mcp import MCPServerStreamableHTTP
-from pydantic_ai.toolsets import FunctionToolset
+from pydantic_ai.toolsets import FunctionToolset, ToolsetTool
 
 load_dotenv()
 
-LINEAGE_MCP_URL = os.environ.get("BUDDY_LINEAGE_MCP_URL", "http://127.0.0.1:18001/mcp")
+logger = logging.getLogger(__name__)
+
+
+def _env_pool_mcp_url() -> str:
+    return os.environ.get("BUDDY_ENV_POOL_MCP_URL", "http://127.0.0.1:18001/mcp")
+
+
+class OptionalMCPServerStreamableHTTP(MCPServerStreamableHTTP):
+    def __init__(self, url: str, **kwargs: Any) -> None:
+        super().__init__(url, **kwargs)
+        self._available = True
+
+    async def __aenter__(self) -> "OptionalMCPServerStreamableHTTP":
+        self._available = True
+        try:
+            await super().__aenter__()
+        except Exception as error:
+            self._available = False
+            logger.warning("env_pool MCP server unavailable at %s; continuing without MCP tools: %s", self.url, error)
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool | None:
+        if not self._available:
+            return None
+        return await super().__aexit__(*args)
+
+    async def get_tools(self, ctx: RunContext[Any]) -> dict[str, ToolsetTool[Any]]:
+        if not self._available:
+            return {}
+        try:
+            return await super().get_tools(ctx)
+        except Exception as error:
+            self._available = False
+            logger.warning("Failed to load env_pool MCP tools from %s; continuing without MCP tools: %s", self.url, error)
+            return {}
 
 
 def _raise_langfuse_auth_error() -> NoReturn:
@@ -81,7 +116,7 @@ def create_agent(
     enable_web_search: bool = True,
     enable_todo: bool = True,
 ) -> Agent[None, str]:
-    toolsets = [MCPServerStreamableHTTP(LINEAGE_MCP_URL)]
+    toolsets = [OptionalMCPServerStreamableHTTP(_env_pool_mcp_url())]
     if enable_web_search:
         toolsets.append(web_tools)
     if enable_todo:

@@ -59,7 +59,7 @@ export default function MessageBox() {
       <div
         ref={scrollContainerRef}
         onScroll={updateIsAtBottom}
-        class="h-full min-h-0 w-full border-2 border-slate-700 overflow-y-auto p-4 bg-gray-900"
+        class="h-full min-h-0 w-full overflow-y-auto bg-base-200/40 p-4"
       >
         <For each={messages()}>
           {(message) => (

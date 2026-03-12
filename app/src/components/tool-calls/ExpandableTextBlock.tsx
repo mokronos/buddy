@@ -28,14 +28,14 @@ export default function ExpandableTextBlock(props: ExpandableTextBlockProps) {
 
   return (
     <div class="mb-2">
-      <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">{props.title}</div>
-      <pre class={`text-gray-200 whitespace-pre-wrap bg-slate-900 p-2 rounded overflow-x-auto ${props.compact ? "text-xs" : "text-sm"}`}>
+      <div class="mb-1 text-xs uppercase tracking-[0.2em] text-base-content/50">{props.title}</div>
+      <pre class={`overflow-x-auto whitespace-pre-wrap rounded-box bg-base-200 p-3 ${props.compact ? "text-xs" : "text-sm"}`}>
         {shownText()}
       </pre>
       <Show when={canExpand()}>
         <button
           type="button"
-          class="mt-2 text-xs text-cyan-300 hover:text-cyan-200"
+          class="btn btn-ghost btn-xs mt-2"
           onClick={() => setExpanded((current) => !current)}
         >
           {expanded() ? "Show less" : "Show more"}

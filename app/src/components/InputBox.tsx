@@ -18,7 +18,7 @@ export default function InputBox() {
   };
 
   return (
-    <div class="w-full border-2 border-slate-700 p-6">
+    <div class="border-t border-base-300 bg-base-100/80 p-4">
       <PromptSuggestions
         onSelect={(prompt) => {
           setInputValue(prompt);
@@ -28,7 +28,7 @@ export default function InputBox() {
       <form ref={formRef} onSubmit={handleSubmit} class="flex gap-2">
         <textarea
           ref={textareaRef}
-          class="textarea flex-1 resize-none"
+          class="textarea textarea-primary flex-1 resize-none bg-base-200"
           placeholder="Type your message here..."
           value={inputValue()}
           onInput={(e) => setInputValue(e.currentTarget.value)}
@@ -42,10 +42,11 @@ export default function InputBox() {
         />
         <button
           type="submit"
-          class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+          class="btn btn-primary self-end"
           disabled={!inputValue().trim() || isSending()}
         >
-          {isSending() ? "Sending..." : "Send"}
+          {isSending() ? <span class="loading loading-spinner loading-sm" /> : null}
+          {isSending() ? "Sending" : "Send"}
         </button>
       </form>
     </div>

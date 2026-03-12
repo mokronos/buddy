@@ -19,12 +19,12 @@ const QUICK_PROMPTS = [
 export default function PromptSuggestions(props: PromptSuggestionsProps) {
   return (
     <div class="mb-3">
-      <div class="text-xs text-slate-400 mb-2">Quick prompts</div>
+      <div class="mb-2 text-xs uppercase tracking-[0.2em] text-base-content/50">Quick prompts</div>
       <div class="flex flex-wrap gap-2">
         {QUICK_PROMPTS.map((prompt) => (
           <button
             type="button"
-            class="text-xs px-3 py-1 rounded-full border border-slate-600 text-slate-200 hover:bg-slate-700"
+            class="badge badge-outline badge-lg h-auto max-w-full whitespace-normal px-3 py-3 text-left text-[11px] leading-4 hover:border-primary hover:text-primary"
             onClick={() => props.onSelect(prompt)}
           >
             {prompt}

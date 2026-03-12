@@ -15,24 +15,26 @@ export default function TopTabs() {
   const location = useLocation();
 
   return (
-    <header class="border-b border-zinc-800 bg-zinc-950 px-4 py-3 text-zinc-100">
-      <nav class="mx-auto flex w-full max-w-7xl items-center gap-2">
-        {tabs.map((tab) => {
-          const isActive = location.pathname === tab.href;
-          return (
-            <A
-              href={tab.href}
-              class={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-zinc-100 text-zinc-900"
-                  : "border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
-              }`}
-            >
-              {tab.label}
-            </A>
-          );
-        })}
-      </nav>
+    <header class="border-b border-base-100/10 bg-base-200/80 backdrop-blur">
+      <div class="navbar mx-auto max-w-7xl px-4 lg:px-6">
+        <div class="flex-1">
+          <span class="font-mono text-sm uppercase tracking-[0.3em] text-primary">Buddy</span>
+        </div>
+        <nav class="flex-none">
+          <ul class="menu menu-horizontal gap-2 rounded-box bg-base-100/70 p-1">
+            {tabs.map((tab) => {
+              const isActive = location.pathname === tab.href;
+              return (
+                <li>
+                  <A href={tab.href} class={isActive ? "active font-semibold" : ""}>
+                    {tab.label}
+                  </A>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      </div>
     </header>
   );
 }

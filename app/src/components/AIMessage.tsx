@@ -8,22 +8,18 @@ interface AIMessageProps {
 
 export default function AIMessage(props: AIMessageProps) {
   return (
-    <div class="flex justify-start mb-4">
-      <div class="bg-slate-700 border border-blue-500 rounded-lg p-3 max-w-[80%]">
-        <div class="flex items-center gap-2 mb-1">
-          <div class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-            <span class="text-white text-xs font-bold">AI</span>
+    <div class="mb-4 flex justify-start">
+      <div class="card max-w-[85%] border border-info/30 bg-base-100 shadow-md">
+        <div class="card-body gap-2 p-4">
+          <div class="flex items-center gap-2">
+            <span class="badge badge-info badge-sm">Assistant</span>
+            {props.streaming ? <span class="badge badge-outline badge-sm">streaming</span> : null}
+            {props.timestamp ? <span class="text-xs text-base-content/50">{props.timestamp}</span> : null}
           </div>
-          <span class="text-xs text-gray-400">Assistant</span>
-          {props.timestamp && (
-            <span class="text-xs text-gray-500">{props.timestamp}</span>
-          )}
+          <div class="text-sm leading-6 text-base-content">
+            {props.streaming ? <div class="whitespace-pre-wrap break-words">{props.content}</div> : <MarkdownContent content={props.content} />}
+          </div>
         </div>
-        {props.streaming ? (
-          <div class="text-gray-100 whitespace-pre-wrap break-words">{props.content}</div>
-        ) : (
-          <MarkdownContent content={props.content} />
-        )}
       </div>
     </div>
   );

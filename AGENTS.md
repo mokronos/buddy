@@ -26,12 +26,14 @@ The goal is to build a JARVIS-like assistant with strong tooling and extensible 
 
 - **Python Version**: Requires Python 3.13+
 - **Package Manager**: Use `uv` for all project operations instead of pip
+- **Frontend Package Manager**: Use `bun` for JavaScript/TypeScript work in `app/`
 - **Virtual Environment**: Managed via `uv sync`, but still available at `.venv`
 - **Typing Imports**: Do not use `from __future__ import annotations` (Python 3.13+ runtime)
 
 ## General Commands
 
 - Use `uv run <file>` instead of `python <file>` to automatically use the virtual environment for the scripts
+- Use `bun` instead of `npm` inside `app/` for install/build/dev tasks
 
 # Behavioral Guidelines
 

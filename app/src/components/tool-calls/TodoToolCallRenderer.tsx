@@ -96,14 +96,14 @@ function readChangedFields(diff: TodoUpdateDiff): string[] {
 
 function priorityClasses(priority: string): string {
   if (priority === "high") {
-    return "bg-rose-900 text-rose-200 border-rose-700";
+    return "badge-error";
   }
 
   if (priority === "low") {
-    return "bg-emerald-900 text-emerald-200 border-emerald-700";
+    return "badge-success";
   }
 
-  return "bg-amber-900 text-amber-200 border-amber-700";
+  return "badge-warning";
 }
 
 function statusDot(status: string): string {
@@ -137,10 +137,10 @@ export default function TodoToolCallRenderer(props: ToolCallRendererProps) {
   return (
     <ToolCallCardBase toolName={props.toolName} status={props.status} timestamp={props.timestamp}>
       <Show when={props.toolName === "todoupdate" && updateDiff !== null}>
-        <div class="mb-3 border border-cyan-700 bg-slate-900 rounded px-3 py-2">
-          <div class="text-xs text-cyan-300 mb-1">Updated todo: {updateDiff!.after.id}</div>
-          <Show when={changedFields.length > 0} fallback={<div class="text-xs text-slate-300">No field changes detected.</div>}>
-            <ul class="text-xs text-slate-200 space-y-1">
+        <div class="mb-3 rounded-box border border-accent/20 bg-accent/10 px-3 py-2">
+          <div class="mb-1 text-xs text-accent">Updated todo: {updateDiff!.after.id}</div>
+          <Show when={changedFields.length > 0} fallback={<div class="text-xs text-base-content/70">No field changes detected.</div>}>
+            <ul class="space-y-1 text-xs text-base-content/80">
               <For each={changedFields}>{(change) => <li>{change}</li>}</For>
             </ul>
           </Show>
@@ -148,16 +148,16 @@ export default function TodoToolCallRenderer(props: ToolCallRendererProps) {
       </Show>
 
       <Show when={requestedTodos.length > 0}>
-        <div class="text-xs text-cyan-300 mb-2">Requested todos: {requestedTodos.length}</div>
+        <div class="mb-2 text-xs text-info">Requested todos: {requestedTodos.length}</div>
         <div class="mb-3 space-y-2">
           <For each={requestedTodos}>
             {(todo) => (
-              <div class="border border-slate-700 bg-slate-900 rounded px-3 py-2">
-                <div class="text-sm text-slate-100">{todo.content}</div>
+              <div class="rounded-box border border-base-300 bg-base-200 px-3 py-2">
+                <div class="text-sm">{todo.content}</div>
                 <div class="mt-1 flex items-center gap-2">
                   <span class={`w-2 h-2 rounded-full ${statusDot(todo.status)}`} />
-                  <span class="text-xs text-slate-300 capitalize">{statusLabel(todo.status)}</span>
-                  <span class={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border ${priorityClasses(todo.priority)}`}>
+                  <span class="text-xs capitalize text-base-content/70">{statusLabel(todo.status)}</span>
+                  <span class={`badge badge-sm ${priorityClasses(todo.priority)}`}>
                     {todo.priority}
                   </span>
                 </div>
@@ -168,20 +168,20 @@ export default function TodoToolCallRenderer(props: ToolCallRendererProps) {
       </Show>
 
       <Show when={resultTodos.length > 0}>
-        <div class="text-xs text-cyan-300 mb-2">Current todo list: {resultTodos.length}</div>
+        <div class="mb-2 text-xs text-info">Current todo list: {resultTodos.length}</div>
         <div class="mb-2 space-y-2">
           <For each={resultTodos}>
             {(todo) => (
-              <div class="border border-slate-700 bg-slate-900 rounded px-3 py-2">
-                <div class="text-sm text-slate-100">{todo.content}</div>
+              <div class="rounded-box border border-base-300 bg-base-200 px-3 py-2">
+                <div class="text-sm">{todo.content}</div>
                 <div class="mt-1 flex items-center gap-2">
                   <span class={`w-2 h-2 rounded-full ${statusDot(todo.status)}`} />
-                  <span class="text-xs text-slate-300 capitalize">{statusLabel(todo.status)}</span>
-                  <span class={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border ${priorityClasses(todo.priority)}`}>
+                  <span class="text-xs capitalize text-base-content/70">{statusLabel(todo.status)}</span>
+                  <span class={`badge badge-sm ${priorityClasses(todo.priority)}`}>
                     {todo.priority}
                   </span>
                   <Show when={todo.id.length > 0}>
-                    <span class="text-[10px] text-slate-500">#{todo.id}</span>
+                    <span class="text-[10px] text-base-content/40">#{todo.id}</span>
                   </Show>
                 </div>
               </div>

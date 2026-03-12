@@ -365,59 +365,65 @@ export default function ManagedAgentsPage() {
   };
 
   return (
-    <main class="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+    <main class="flex min-h-screen flex-col">
       <TopTabs />
-      <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+      <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6">
         <div class="mx-auto flex w-full max-w-6xl flex-col gap-6">
-          <div class="flex items-center justify-between">
-            <div>
-              <h1 class="text-2xl font-semibold">Managed Agents</h1>
-              <p class="mt-1 text-sm text-zinc-400">Create, start, stop and delete Docker-backed agent containers.</p>
+          <div class="hero rounded-box border border-base-100/10 bg-base-100 shadow-xl">
+            <div class="hero-content w-full justify-start p-6">
+              <div>
+                <div class="badge badge-primary badge-outline mb-3">Control Plane</div>
+                <h1 class="text-3xl font-semibold">Managed Agents</h1>
+                <p class="mt-2 text-sm text-base-content/70">
+                  Create, start, stop and delete Docker-backed agent containers.
+                </p>
+              </div>
             </div>
           </div>
 
-          <section class="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-            <h2 class="mb-4 text-lg font-medium">Create Agent</h2>
+          <section class="card border border-base-100/10 bg-base-100 shadow-xl">
+            <div class="card-body">
+              <h2 class="card-title">Create Agent</h2>
             <form class="grid gap-3" onSubmit={createAgent}>
               <input
-                class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                class="input input-bordered w-full"
                 placeholder="Agent ID (example: demo-agent)"
                 value={agentId()}
                 onInput={(event) => setAgentId(event.currentTarget.value)}
               />
               <input
-                class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                class="input input-bordered w-full"
                 placeholder="Image"
                 value={image()}
                 onInput={(event) => setImage(event.currentTarget.value)}
               />
               <div class="grid gap-3 md:grid-cols-2">
                 <input
-                  class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                  class="input input-bordered w-full"
                   placeholder="Container Port"
                   value={containerPort()}
                   onInput={(event) => setContainerPort(event.currentTarget.value)}
                 />
                 <input
-                  class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                  class="input input-bordered w-full"
                   placeholder="Config Mount Path"
                   value={configMountPath()}
                   onInput={(event) => setConfigMountPath(event.currentTarget.value)}
                 />
               </div>
               <textarea
-                class="h-52 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs"
+                class="textarea textarea-primary h-52 w-full font-mono text-xs"
                 value={configYaml()}
                 onInput={(event) => setConfigYaml(event.currentTarget.value)}
               />
               <button
                 type="submit"
                 disabled={createManagedMutation.isPending}
-                class="inline-flex w-fit items-center gap-2 rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                class="btn btn-primary w-fit"
               >
                 {createManagedMutation.isPending ? (
                   <>
-                    <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent" />
+                    <span class="loading loading-spinner loading-sm" />
                     Creating...
                   </>
                 ) : (
@@ -425,42 +431,45 @@ export default function ManagedAgentsPage() {
                 )}
               </button>
             </form>
+            </div>
           </section>
 
-          <section class="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-            <h2 class="mb-2 text-lg font-medium">Add External A2A Agent</h2>
-            <p class="mb-4 text-sm text-zinc-400">
+          <section class="card border border-base-100/10 bg-base-100 shadow-xl">
+            <div class="card-body">
+              <h2 class="card-title">Add External A2A Agent</h2>
+            <p class="mb-4 text-sm text-base-content/70">
               Register an external Buddy-compatible server URL and access it through the local proxy.
             </p>
             <form class="grid gap-3" onSubmit={addExternalAgent}>
               <input
-                class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                class="input input-bordered w-full"
                 placeholder="External Agent ID (example: remote-buddy)"
                 value={externalAgentId()}
                 onInput={(event) => setExternalAgentId(event.currentTarget.value)}
               />
               <input
-                class="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2"
+                class="input input-bordered w-full"
                 placeholder="Base URL (example: http://192.168.1.20:10001)"
                 value={externalAgentUrl()}
                 onInput={(event) => setExternalAgentUrl(event.currentTarget.value)}
               />
-              <label class="inline-flex items-center gap-2 text-sm text-zinc-300">
+              <label class="label cursor-pointer justify-start gap-3">
                 <input
                   type="checkbox"
+                  class="checkbox checkbox-primary"
                   checked={externalUseLegacyCardPath()}
                   onChange={(event) => setExternalUseLegacyCardPath(event.currentTarget.checked)}
                 />
-                Use legacy card path (`/.well-known/agent.json`)
+                <span class="label-text">Use legacy card path (`/.well-known/agent.json`)</span>
               </label>
               <button
                 type="submit"
                 disabled={createExternalMutation.isPending}
-                class="inline-flex w-fit items-center gap-2 rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                class="btn btn-secondary w-fit"
               >
                 {createExternalMutation.isPending ? (
                   <>
-                    <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent" />
+                    <span class="loading loading-spinner loading-sm" />
                     Adding...
                   </>
                 ) : (
@@ -468,14 +477,16 @@ export default function ManagedAgentsPage() {
                 )}
               </button>
             </form>
+            </div>
           </section>
 
-          <section class="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <section class="card border border-base-100/10 bg-base-100 shadow-xl">
+            <div class="card-body">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-lg font-medium">Current Agents</h2>
+              <h2 class="card-title">Current Agents</h2>
               <button
                 type="button"
-                class="rounded-md border border-zinc-700 px-3 py-1 text-sm hover:border-zinc-400"
+                class="btn btn-sm btn-outline"
                 onClick={() => {
                   void syncAgentQueries();
                 }}
@@ -485,14 +496,14 @@ export default function ManagedAgentsPage() {
             </div>
 
             {errorMessage() || queryErrorMessage() ? (
-              <p class="mb-3 rounded-md bg-red-900/30 p-2 text-sm text-red-300">{errorMessage() ?? queryErrorMessage()}</p>
+              <p class="alert alert-error mb-3 text-sm">{errorMessage() ?? queryErrorMessage()}</p>
             ) : null}
             {actionMessage() ? (
-              <p class="mb-3 rounded-md bg-emerald-900/30 p-2 text-sm text-emerald-300">{actionMessage()}</p>
+              <p class="alert alert-success mb-3 text-sm">{actionMessage()}</p>
             ) : null}
             {createManagedMutation.isPending ? (
-              <p class="mb-3 inline-flex items-center gap-2 rounded-md bg-zinc-800 p-2 text-sm text-zinc-200">
-                <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-200 border-t-transparent" />
+              <p class="alert alert-info mb-3 text-sm">
+                <span class="loading loading-spinner loading-sm" />
                 Starting managed agent container and waiting for readiness...
               </p>
             ) : null}
@@ -500,7 +511,8 @@ export default function ManagedAgentsPage() {
             <div class="grid gap-3">
               {shouldShowLoading() && visibleManagedAgents().length === 0 ? (
                 <>
-                  <article class="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <article class="card border border-base-300 bg-base-200">
+                    <div class="card-body p-4">
                     <div class="flex items-center justify-between">
                       <div class="space-y-2">
                         <Skeleton class="h-4 w-32" />
@@ -517,8 +529,10 @@ export default function ManagedAgentsPage() {
                       <Skeleton class="h-7 w-16" />
                       <Skeleton class="h-7 w-24" />
                     </div>
+                    </div>
                   </article>
-                  <article class="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <article class="card border border-base-300 bg-base-200">
+                    <div class="card-body p-4">
                     <div class="flex items-center justify-between">
                       <div class="space-y-2">
                         <Skeleton class="h-4 w-28" />
@@ -530,42 +544,44 @@ export default function ManagedAgentsPage() {
                       <Skeleton class="h-3 w-full" />
                       <Skeleton class="h-3 w-3/4" />
                     </div>
+                    </div>
                   </article>
                 </>
               ) : null}
               <For each={visibleManagedAgents()}>
                 {(agent) => (
-                  <article class="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <article class="card border border-base-300 bg-base-200 shadow-sm">
+                    <div class="card-body p-4">
                     {(() => {
                       const deleting = () => isDeletingManagedAgent(agent.agent_id);
                       return (
                         <>
                     <div class="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p class="font-medium text-zinc-100">{agent.agent_id}</p>
-                        <p class="text-xs text-zinc-400">{agent.image}</p>
+                        <p class="font-medium">{agent.agent_id}</p>
+                        <p class="text-xs text-base-content/60">{agent.image}</p>
                       </div>
-                      <span class="rounded-md border border-zinc-700 px-2 py-1 text-xs uppercase tracking-wide text-zinc-300">
+                      <span class={`badge badge-outline ${deleting() ? "badge-warning" : "badge-neutral"}`}>
                         {deleting() ? "deleting" : agent.status}
                       </span>
                     </div>
-                    <div class="mt-2 text-xs text-zinc-400">
+                    <div class="mt-2 text-xs text-base-content/60">
                       <p>container: {agent.container_id ?? "-"}</p>
                       <p>host port: {agent.host_port ?? "-"}</p>
                       <p>config: {agent.config_path}</p>
-                      {agent.last_error ? <p class="mt-1 text-red-300">error: {agent.last_error}</p> : null}
+                      {agent.last_error ? <p class="mt-1 text-error">error: {agent.last_error}</p> : null}
                       {deleting() ? (
-                        <p class="mt-1 inline-flex items-center gap-2 text-amber-300">
-                          <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
+                        <p class="mt-1 inline-flex items-center gap-2 text-warning">
+                          <span class="loading loading-spinner loading-xs" />
                           Waiting for container shutdown...
                         </p>
                       ) : null}
                     </div>
-                    <div class="mt-3 flex flex-wrap gap-2">
+                    <div class="join mt-3 flex flex-wrap">
                       <button
                         type="button"
                         disabled={deleting()}
-                        class="rounded-md border border-zinc-700 px-3 py-1 text-xs hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        class="btn btn-sm join-item"
                         onClick={() => void startAgent(agent.agent_id)}
                       >
                         Start
@@ -573,7 +589,7 @@ export default function ManagedAgentsPage() {
                       <button
                         type="button"
                         disabled={deleting()}
-                        class="rounded-md border border-zinc-700 px-3 py-1 text-xs hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        class="btn btn-sm join-item"
                         onClick={() => void stopAgent(agent.agent_id)}
                       >
                         Stop
@@ -581,7 +597,7 @@ export default function ManagedAgentsPage() {
                       <button
                         type="button"
                         disabled={deleting()}
-                        class="rounded-md border border-zinc-700 px-3 py-1 text-xs hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        class="btn btn-sm join-item"
                         onClick={() => void beginEditManagedAgent(agent.agent_id)}
                       >
                         Edit Config
@@ -589,7 +605,7 @@ export default function ManagedAgentsPage() {
                       <button
                         type="button"
                         disabled={deleting()}
-                        class="rounded-md border border-red-700 px-3 py-1 text-xs text-red-300 hover:border-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        class="btn btn-sm btn-error join-item"
                         onClick={() => void removeAgent(agent.agent_id)}
                       >
                         {deleting() ? "Deleting..." : "Delete"}
@@ -598,23 +614,24 @@ export default function ManagedAgentsPage() {
                     {editingManagedAgentId() === agent.agent_id ? (
                       <div class="mt-3 grid gap-2">
                         <textarea
-                          class="h-48 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs"
+                          class="textarea textarea-primary h-48 w-full font-mono text-xs"
                           value={editingManagedConfigYaml()}
                           onInput={(event) => setEditingManagedConfigYaml(event.currentTarget.value)}
                         />
-                        <label class="inline-flex items-center gap-2 text-xs text-zinc-300">
+                        <label class="label cursor-pointer justify-start gap-3">
                           <input
                             type="checkbox"
+                            class="checkbox checkbox-primary checkbox-sm"
                             checked={restartManagedAfterConfigSave()}
                             onChange={(event) => setRestartManagedAfterConfigSave(event.currentTarget.checked)}
                           />
-                          Restart container after save
+                          <span class="label-text text-xs">Restart container after save</span>
                         </label>
-                        <div class="flex flex-wrap gap-2">
+                        <div class="join flex flex-wrap">
                           <button
                             type="button"
                             disabled={updateManagedConfigMutation.isPending || deleting()}
-                            class="rounded-md border border-zinc-600 px-3 py-1 text-xs text-zinc-100 hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-70"
+                            class="btn btn-sm btn-primary join-item"
                             onClick={() => void saveManagedAgentConfig(agent.agent_id)}
                           >
                             Save Config
@@ -622,7 +639,7 @@ export default function ManagedAgentsPage() {
                           <button
                             type="button"
                             disabled={deleting()}
-                            class="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                            class="btn btn-sm join-item"
                             onClick={cancelEditManagedAgent}
                           >
                             Cancel
@@ -633,23 +650,27 @@ export default function ManagedAgentsPage() {
                         </>
                       );
                     })()}
+                    </div>
                   </article>
                 )}
               </For>
               {visibleManagedAgents().length === 0 && !shouldShowLoading() ? (
-                <p class="text-sm text-zinc-400">0 managed agents available.</p>
+                <p class="text-sm text-base-content/60">0 managed agents available.</p>
               ) : null}
+            </div>
             </div>
           </section>
 
-          <section class="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <section class="card border border-base-100/10 bg-base-100 shadow-xl">
+            <div class="card-body">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-lg font-medium">External Agents</h2>
+              <h2 class="card-title">External Agents</h2>
             </div>
             <div class="grid gap-3">
               {shouldShowLoading() && visibleExternalAgents().length === 0 ? (
                 <>
-                  <article class="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <article class="card border border-base-300 bg-base-200">
+                    <div class="card-body p-4">
                     <div class="flex items-center justify-between">
                       <div class="space-y-2">
                         <Skeleton class="h-4 w-36" />
@@ -661,8 +682,10 @@ export default function ManagedAgentsPage() {
                       <Skeleton class="h-7 w-14" />
                       <Skeleton class="h-7 w-16" />
                     </div>
+                    </div>
                   </article>
-                  <article class="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <article class="card border border-base-300 bg-base-200">
+                    <div class="card-body p-4">
                     <div class="flex items-center justify-between">
                       <div class="space-y-2">
                         <Skeleton class="h-4 w-32" />
@@ -670,52 +693,53 @@ export default function ManagedAgentsPage() {
                       </div>
                       <Skeleton class="h-6 w-20" />
                     </div>
+                    </div>
                   </article>
                 </>
               ) : null}
               <For each={visibleExternalAgents()}>
                 {(externalAgent) => (
-                  <article class="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <article class="card border border-base-300 bg-base-200 shadow-sm">
+                    <div class="card-body p-4">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p class="font-medium text-zinc-100">{externalAgent.agent_id}</p>
-                        <p class="text-xs text-zinc-400">{externalAgent.base_url}</p>
+                        <p class="font-medium">{externalAgent.agent_id}</p>
+                        <p class="text-xs text-base-content/60">{externalAgent.base_url}</p>
                       </div>
-                      <span class="rounded-md border border-zinc-700 px-2 py-1 text-xs uppercase tracking-wide text-zinc-300">
-                        registered
-                      </span>
+                      <span class="badge badge-neutral badge-outline">registered</span>
                     </div>
-                    <div class="mt-2 text-xs text-zinc-400">
+                    <div class="mt-2 text-xs text-base-content/60">
                       <p>proxy: /a2a/external/{externalAgent.agent_id}</p>
                       <p>card path: {externalAgent.use_legacy_card_path ? "legacy" : "standard"}</p>
                     </div>
                     {editingExternalAgentId() === externalAgent.agent_id ? (
                       <div class="mt-3 grid gap-2">
                         <input
-                          class="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs"
+                          class="input input-bordered w-full text-xs"
                           value={editingExternalAgentUrl()}
                           onInput={(event) => setEditingExternalAgentUrl(event.currentTarget.value)}
                         />
-                        <label class="inline-flex items-center gap-2 text-xs text-zinc-300">
+                        <label class="label cursor-pointer justify-start gap-3">
                           <input
                             type="checkbox"
+                            class="checkbox checkbox-primary checkbox-sm"
                             checked={editingExternalUseLegacyCardPath()}
                             onChange={(event) => setEditingExternalUseLegacyCardPath(event.currentTarget.checked)}
                           />
-                          Use legacy card path (`/.well-known/agent.json`)
+                          <span class="label-text text-xs">Use legacy card path (`/.well-known/agent.json`)</span>
                         </label>
-                        <div class="flex flex-wrap gap-2">
+                        <div class="join flex flex-wrap">
                           <button
                             type="button"
                             disabled={updateExternalMutation.isPending}
-                            class="rounded-md border border-zinc-600 px-3 py-1 text-xs text-zinc-100 hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-70"
+                            class="btn btn-sm btn-primary join-item"
                             onClick={() => void saveExternalAgentEdit(externalAgent.agent_id)}
                           >
                             Save
                           </button>
                           <button
                             type="button"
-                            class="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-zinc-500"
+                            class="btn btn-sm join-item"
                             onClick={cancelEditExternalAgent}
                           >
                             Cancel
@@ -723,29 +747,31 @@ export default function ManagedAgentsPage() {
                         </div>
                       </div>
                     ) : (
-                      <div class="mt-3 flex flex-wrap gap-2">
+                      <div class="join mt-3 flex flex-wrap">
                         <button
                           type="button"
-                          class="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-200 hover:border-zinc-500"
+                          class="btn btn-sm join-item"
                           onClick={() => beginEditExternalAgent(externalAgent)}
                         >
                           Edit
                         </button>
                         <button
                           type="button"
-                          class="rounded-md border border-red-700 px-3 py-1 text-xs text-red-300 hover:border-red-500"
+                          class="btn btn-sm btn-error join-item"
                           onClick={() => void removeExternalAgent(externalAgent.agent_id)}
                         >
                           Delete
                         </button>
                       </div>
                     )}
+                    </div>
                   </article>
                 )}
               </For>
               {visibleExternalAgents().length === 0 && !shouldShowLoading() ? (
-                <p class="text-sm text-zinc-400">0 external agents available.</p>
+                <p class="text-sm text-base-content/60">0 external agents available.</p>
               ) : null}
+            </div>
             </div>
           </section>
         </div>

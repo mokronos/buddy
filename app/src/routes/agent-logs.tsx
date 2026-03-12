@@ -127,33 +127,37 @@ export default function AgentLogsPage() {
   });
 
   return (
-    <main class="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+    <main class="flex min-h-screen flex-col">
       <TopTabs />
-      <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+      <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6">
         <div class="mx-auto flex w-full max-w-7xl flex-col gap-6">
-          <div class="flex items-center justify-between">
-            <div>
-              <h1 class="text-2xl font-semibold">Agent Logs</h1>
-              <p class="mt-1 text-sm text-zinc-400">Live Docker logs for each managed agent (auto-refresh every 2s).</p>
+          <div class="hero rounded-box border border-base-100/10 bg-base-100 shadow-xl">
+            <div class="hero-content w-full justify-between p-6">
+              <div>
+                <div class="badge badge-accent badge-outline mb-3">Observability</div>
+                <h1 class="text-3xl font-semibold">Agent Logs</h1>
+                <p class="mt-2 text-sm text-base-content/70">Live Docker logs for each managed agent (auto-refresh every 2s).</p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-outline"
+                onClick={() => {
+                  void logsQuery.refetch();
+                }}
+              >
+                Refresh
+              </button>
             </div>
-            <button
-              type="button"
-              class="rounded-md border border-zinc-700 px-3 py-1 text-sm hover:border-zinc-400"
-              onClick={() => {
-                void logsQuery.refetch();
-              }}
-            >
-              Refresh
-            </button>
           </div>
 
-          {lastUpdated() ? <p class="text-xs text-zinc-500">Last updated: {lastUpdated()}</p> : null}
-          {isRefreshing() ? <p class="text-xs text-zinc-500">Refreshing logs...</p> : null}
+          {lastUpdated() ? <p class="text-xs text-base-content/50">Last updated: {lastUpdated()}</p> : null}
+          {isRefreshing() ? <p class="alert alert-info text-xs"><span class="loading loading-spinner loading-xs" />Refreshing logs...</p> : null}
 
           <div class="grid gap-4">
             {isInitialLoading() && agentOrder().length === 0 ? (
               <>
-                <section class="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                <section class="card border border-base-300 bg-base-200">
+                  <div class="card-body p-4">
                   <div class="mb-2 flex items-center justify-between gap-3">
                     <div class="space-y-2">
                       <Skeleton class="h-4 w-32" />
@@ -162,8 +166,10 @@ export default function AgentLogsPage() {
                     <Skeleton class="h-6 w-20" />
                   </div>
                   <Skeleton class="h-44 w-full" />
+                  </div>
                 </section>
-                <section class="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                <section class="card border border-base-300 bg-base-200">
+                  <div class="card-body p-4">
                   <div class="mb-2 flex items-center justify-between gap-3">
                     <div class="space-y-2">
                       <Skeleton class="h-4 w-28" />
@@ -172,6 +178,7 @@ export default function AgentLogsPage() {
                     <Skeleton class="h-6 w-20" />
                   </div>
                   <Skeleton class="h-44 w-full" />
+                  </div>
                 </section>
               </>
             ) : null}
@@ -179,13 +186,14 @@ export default function AgentLogsPage() {
               {(agentId) => {
                 const entry = () => entriesById()[agentId];
                 return (
-                  <section class="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                  <section class="card border border-base-300 bg-base-100 shadow-sm">
+                    <div class="card-body p-4">
                     <div class="mb-2 flex items-center justify-between gap-3">
                       <div>
                         <p class="font-medium">{entry()?.agent.agent_id ?? agentId}</p>
-                        <p class="text-xs text-zinc-400">{entry()?.agent.image ?? "-"}</p>
+                        <p class="text-xs text-base-content/60">{entry()?.agent.image ?? "-"}</p>
                       </div>
-                      <span class="rounded-md border border-zinc-700 px-2 py-1 text-xs uppercase tracking-wide text-zinc-300">
+                      <span class="badge badge-neutral badge-outline">
                         {entry()?.agent.status ?? "unknown"}
                       </span>
                     </div>
@@ -195,17 +203,18 @@ export default function AgentLogsPage() {
                         logContainers.set(agentId, element);
                       }}
                       onScroll={() => updateFollowState(agentId)}
-                      class="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-200"
+                      class="mockup-code max-h-80 overflow-y-auto whitespace-pre-wrap rounded-box border border-base-300 bg-base-200 p-3 font-mono text-xs"
                     >
                       {entry()?.logs && entry()!.logs.length > 0 ? entry()!.logs : "(no logs yet)"}
                     </pre>
+                    </div>
                   </section>
                 );
               }}
             </For>
 
             {agentOrder().length === 0 && !isInitialLoading() ? (
-              <p class="text-sm text-zinc-400">0 agents available for logs.</p>
+              <p class="text-sm text-base-content/60">0 agents available for logs.</p>
             ) : null}
           </div>
         </div>

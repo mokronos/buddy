@@ -12,34 +12,33 @@ export default function AgentCard(props: AgentCardProps) {
   return (
     <button
       type="button"
-      class={`w-full rounded-lg border px-3 py-3 text-left transition ${
+      class={`card w-full border text-left transition-all ${
         props.isActive
-          ? "border-cyan-500 bg-cyan-950/40 text-zinc-50"
-          : "border-zinc-700 bg-zinc-800/70 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800"
+          ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
+          : "border-base-300 bg-base-200/70 hover:border-primary/40 hover:bg-base-200"
       }`}
       aria-pressed={props.isActive}
       onClick={() => props.onSelect(props.agent.key)}
     >
-      <div class="flex items-start justify-between gap-2">
-        <p class="text-sm font-semibold text-zinc-50">{props.agent.name}</p>
-        {props.agent.version ? (
-          <span class="rounded bg-zinc-700/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-300">
-            v{props.agent.version}
-          </span>
+      <div class="card-body gap-3 p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="card-title text-sm">{props.agent.name}</p>
+            <p class="mt-1 text-[11px] uppercase tracking-[0.2em] text-base-content/50">{props.agent.key}</p>
+          </div>
+          {props.agent.version ? <span class="badge badge-primary badge-outline">v{props.agent.version}</span> : null}
+        </div>
+
+        <p class="text-xs leading-5 text-base-content/70">{props.agent.description ?? "No description provided."}</p>
+
+        {visibleSkills.length > 0 ? (
+          <div class="flex flex-wrap gap-1.5">
+            {visibleSkills.map((skill) => (
+              <span class="badge badge-secondary badge-outline badge-sm">{skill}</span>
+            ))}
+          </div>
         ) : null}
       </div>
-
-      <p class="mt-2 text-xs text-zinc-300">{props.agent.description ?? "No description provided."}</p>
-
-      {visibleSkills.length > 0 ? (
-        <div class="mt-2 flex flex-wrap gap-1">
-          {visibleSkills.map((skill) => (
-            <span class="rounded bg-zinc-700/70 px-2 py-0.5 text-[10px] text-zinc-200">{skill}</span>
-          ))}
-        </div>
-      ) : null}
-
-      <p class="mt-2 text-[10px] uppercase tracking-wide text-zinc-400">{props.agent.key}</p>
     </button>
   );
 }

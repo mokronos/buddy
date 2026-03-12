@@ -28,7 +28,10 @@ export default function WebSearchToolCallRenderer(props: ToolCallRendererProps) 
   return (
     <ToolCallCardBase toolName={props.toolName} status={props.status} timestamp={props.timestamp}>
       <Show when={query}>
-        <div class="text-xs text-cyan-300 mb-2">Query: {query}</div>
+        <div class="mb-2 flex items-center gap-2">
+          <span class="badge badge-primary badge-outline">Query</span>
+          <span class="text-sm">{query}</span>
+        </div>
       </Show>
       <Show when={paramsText.length > 0}>
         <ExpandableTextBlock title="Search Input" content={paramsText} compact />

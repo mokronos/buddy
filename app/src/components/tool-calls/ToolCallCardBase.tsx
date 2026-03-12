@@ -22,17 +22,17 @@ function statusIcon(status?: 'success' | 'error' | 'running'): string {
 
 export default function ToolCallCardBase(props: ToolCallCardBaseProps) {
   return (
-    <div class="flex justify-center mb-4">
-      <div class="border border-cyan-600 bg-slate-800 rounded-lg p-3 max-w-[90%] w-full">
-        <div class="flex items-center gap-2 mb-2">
-          <div class="w-6 h-6 bg-cyan-700 rounded-full flex items-center justify-center">
-            <span class="text-white text-xs">{statusIcon(props.status)}</span>
+    <div class="mb-4 flex justify-center">
+      <div class="card w-full max-w-[92%] border border-info/30 bg-base-100 shadow-md">
+        <div class="card-body gap-3 p-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="badge badge-info badge-sm">Tool Call</span>
+            <span class="badge badge-outline badge-sm">{props.toolName}</span>
+            <span class="badge badge-ghost badge-sm">{statusIcon(props.status)}</span>
+            {props.timestamp ? <span class="text-xs text-base-content/50">{props.timestamp}</span> : null}
           </div>
-          <span class="text-sm font-medium text-cyan-200">Tool Call</span>
-          <span class="text-sm text-gray-300">{props.toolName}</span>
-          {props.timestamp && <span class="text-xs text-gray-400">{props.timestamp}</span>}
+          {props.children}
         </div>
-        {props.children}
       </div>
     </div>
   );

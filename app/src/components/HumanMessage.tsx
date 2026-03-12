@@ -7,18 +7,17 @@ interface HumanMessageProps {
 
 export default function HumanMessage(props: HumanMessageProps) {
   return (
-    <div class="flex justify-end mb-4">
-      <div class="bg-slate-600 border border-green-500 rounded-lg p-3 max-w-[80%]">
-        <div class="flex items-center gap-2 mb-1 justify-end">
-          {props.timestamp && (
-            <span class="text-xs text-gray-500">{props.timestamp}</span>
-          )}
-          <span class="text-xs text-gray-400">You</span>
-          <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-            <span class="text-white text-xs font-bold">H</span>
+    <div class="mb-4 flex justify-end">
+      <div class="card max-w-[85%] border border-primary/30 bg-primary/12 shadow-md">
+        <div class="card-body gap-2 p-4">
+          <div class="flex items-center justify-end gap-2">
+            {props.timestamp ? <span class="text-xs text-base-content/50">{props.timestamp}</span> : null}
+            <span class="badge badge-primary badge-sm">You</span>
+          </div>
+          <div class="text-sm leading-6 text-base-content">
+            <MarkdownContent content={props.content} />
           </div>
         </div>
-        <MarkdownContent content={props.content} />
       </div>
     </div>
   );

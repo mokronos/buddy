@@ -8,7 +8,7 @@ export default function Skeleton(props: SkeletonProps) {
   return (
     <div
       aria-hidden="true"
-      class={`animate-pulse rounded-md bg-zinc-800/80 ${local.class ?? ""}`}
+      class={`skeleton ${local.class ?? ""}`}
       {...rest}
     />
   );

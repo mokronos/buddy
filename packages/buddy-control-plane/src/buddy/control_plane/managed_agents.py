@@ -536,20 +536,21 @@ class ManagedAgentManager:
 
     def _wait_for_a2a_ready(self, agent_id: str, host_port: int) -> None:
         base_url = f"http://127.0.0.1:{host_port}"
+        agent_card_url = f"{base_url}/.well-known/agent-card.json"
         delay = 0.2
         max_attempts = 30
         for _ in range(max_attempts):
             try:
-                agents_response = requests.get(f"{base_url}/agents", timeout=2)
-                if agents_response.ok:
-                    payload = agents_response.json()
-                    if isinstance(payload, dict) and isinstance(payload.get("agents"), list):
+                card_response = requests.get(agent_card_url, timeout=2)
+                if card_response.ok:
+                    payload = card_response.json()
+                    if isinstance(payload, dict) and isinstance(payload.get("name"), str):
                         return
             except requests.RequestException:
                 pass
             sleep(delay)
             delay = min(delay * 2, 2.0)
-        raise RuntimeError(f"Managed agent '{agent_id}' failed readiness check at {base_url}/agents")
+        raise RuntimeError(f"Managed agent '{agent_id}' failed readiness check at {agent_card_url}")
 
     def _save_registry(self) -> None:
         payload = {agent_id: asdict(record) for agent_id, record in self._records.items()}

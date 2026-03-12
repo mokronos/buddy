@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/solid-query";
-import { For, createSignal, onMount } from "solid-js";
+import { For, Show, createSignal, onMount } from "solid-js";
 import {
   createExternalAgent,
   deleteExternalAgent,
@@ -39,12 +39,14 @@ type FeedbackState =
   | null;
 
 function FeedbackAlert(props: { feedback: FeedbackState; class?: string }) {
-  if (!props.feedback) {
-    return null;
-  }
-
-  const alertClass = props.feedback.kind === "error" ? "alert-error" : "alert-success";
-  return <p class={`alert ${alertClass} text-sm ${props.class ?? ""}`}>{props.feedback.message}</p>;
+  return (
+    <Show when={props.feedback}>
+      {(feedback) => {
+        const alertClass = feedback().kind === "error" ? "alert-error" : "alert-success";
+        return <p class={`alert ${alertClass} text-sm ${props.class ?? ""}`}>{feedback().message}</p>;
+      }}
+    </Show>
+  );
 }
 
 function syncAgentIdInConfig(configYaml: string, agentId: string): string {

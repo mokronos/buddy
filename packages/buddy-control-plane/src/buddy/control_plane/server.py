@@ -27,35 +27,6 @@ if base_url.endswith("/a2a"):
 session_store = SessionStore(Path("sessions.db"))
 
 
-def _int_env(name: str, default: int) -> int:
-    raw_value = os.environ.get(name)
-    if raw_value is None:
-        return default
-    try:
-        return int(raw_value)
-    except ValueError:
-        return default
-
-
-def _bool_env(name: str, default: bool) -> bool:
-    raw_value = os.environ.get(name)
-    if raw_value is None:
-        return default
-    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _default_managed_agent_yaml() -> str:
-    return """agent:
-  id: buddy
-  name: buddy
-  instructions: \"You are the English Buddy agent. Reply in English only.\"
-  model: openrouter:openrouter/free
-
-a2a:
-  port: 8000
-"""
-
-
 def create_app() -> FastAPI:
     app = FastAPI()
 
@@ -96,24 +67,7 @@ def create_app() -> FastAPI:
     async def _startup() -> None:
         await run_in_threadpool(managed_agent_manager.reconcile_from_docker)
 
-        if _bool_env("BUDDY_DEFAULT_MANAGED_AGENT_ENABLED", True):
-            default_agent_id = os.environ.get("BUDDY_DEFAULT_MANAGED_AGENT_ID", "buddy")
-            existing = await run_in_threadpool(managed_agent_manager.get_agent, default_agent_id)
-            if existing is None:
-                await run_in_threadpool(
-                    managed_agent_manager.create_agent,
-                    agent_id=default_agent_id,
-                    image=os.environ.get("BUDDY_DEFAULT_MANAGED_AGENT_IMAGE", "buddy-agent-runtime:latest"),
-                    config_yaml=_default_managed_agent_yaml(),
-                    container_port=_int_env("BUDDY_DEFAULT_MANAGED_AGENT_PORT", 8000),
-                    config_mount_path="/etc/buddy/agent.yaml",
-                    extra_env={},
-                    command=None,
-                )
-            else:
-                await run_in_threadpool(managed_agent_manager.start_agent, default_agent_id)
-
-        if _bool_env("BUDDY_MANAGED_AGENT_AUTO_START_ALL", True):
+        if os.environ.get("BUDDY_MANAGED_AGENT_AUTO_START_ALL", "true").strip().lower() in {"1", "true", "yes", "on"}:
             records = await run_in_threadpool(managed_agent_manager.list_agents)
             for record in records:
                 if record.status == "running":

@@ -133,13 +133,3 @@ def create_agent(
         toolsets=cast(Any, toolsets),
         instrument=langfuse_ready,
     )
-
-
-agent = create_agent(
-    "buddy-agent",
-    "You are the English Buddy agent. Reply in English only.",
-)
-
-agents = {
-    "buddy": agent,
-}

@@ -71,7 +71,7 @@ def create_runtime_app(agents: dict[str, Agent]) -> FastAPI:
 
     agent_key = next(iter(agents.keys()))
     agent = agents[agent_key]
-    card_name = agent.name or f"buddy-{agent_key}"
+    card_name = agent.name or agent_key
 
     app = _create_a2a_runtime_app(
         agent=agent,

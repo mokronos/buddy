@@ -1,5 +1,3 @@
-import os
-
 from buddy.control_plane.server_state import ServerState
 from buddy.control_plane.validation import validate_agent_id
 from fastapi import APIRouter, HTTPException, Request
@@ -51,19 +49,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         external_entries = [state.build_external_entry(record.agent_id) for record in external_records]
         all_entries = [*managed_entries, *external_entries]
 
-        default_key = None
-        managed_default_key = next(
-            (
-                entry["key"]
-                for entry in managed_entries
-                if entry.get("name") == os.environ.get("BUDDY_DEFAULT_MANAGED_AGENT_ID", "buddy")
-            ),
-            None,
-        )
-        if managed_default_key is not None:
-            default_key = managed_default_key
-        if default_key is None and all_entries:
-            default_key = all_entries[0]["key"]
+        default_key = all_entries[0]["key"] if all_entries else None
 
         return JSONResponse({
             "defaultAgentKey": default_key,

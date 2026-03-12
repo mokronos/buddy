@@ -29,13 +29,12 @@ const ChatContext = createContext<ChatContextValue>();
 const CANCEL_TIMEOUT_MS = 5000;
 const CANCELLATION_TIMEOUT_MESSAGE = "Cancellation request timed out. The local stream was stopped.";
 
-function createTextMessageParams(text: string, contextId: string, taskId: string): MessageSendParams {
+function createTextMessageParams(text: string, contextId: string): MessageSendParams {
   return {
     message: {
       kind: "message",
       messageId: crypto.randomUUID(),
       contextId,
-      taskId,
       role: "user",
       parts: [{ kind: "text", text }],
     },
@@ -186,7 +185,7 @@ function emptyConversation(label: string, messages: Message[] = []): AgentConver
 interface ActiveChatRequest {
   abortController: AbortController;
   client: A2AClient;
-  requestTaskId: string;
+  requestTaskId: string | null;
   cancelRequested: boolean;
   cancellationConfirmed: boolean;
   cancelState: "idle" | "requested" | "not-cancelable" | "timed-out" | "failed";
@@ -455,7 +454,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
     const targetTaskId = activeTaskIds()[targetAgentKey] ?? workspace.taskOrder[0] ?? "";
     const task = workspace.tasks[targetTaskId];
-    if (!task?.activeRequestTaskId) {
+    if (!task?.isSending) {
       return;
     }
 
@@ -473,6 +472,12 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
     request.cancelPromise = (async () => {
       try {
+        if (!request.requestTaskId) {
+          request.cancellationConfirmed = true;
+          request.abortController.abort();
+          return;
+        }
+
         await Promise.race([
           request.client.cancelTask(request.requestTaskId),
           new Promise<never>((_, reject) => {
@@ -519,7 +524,6 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     const targetTaskId = activeTaskIds()[targetAgentKey] ?? targetWorkspace.taskOrder[0] ?? "task-1";
     const activeContextId =
       (targetWorkspace.tasks[targetTaskId]?.contextId ?? null) ?? buildAgentContextId(targetAgentKey);
-    const requestTaskId = crypto.randomUUID();
     const requestKey = buildRequestKey(targetAgentKey, targetTaskId);
 
     updateTask(targetAgentKey, targetTaskId, (current) => {
@@ -565,7 +569,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       ...current,
       isSending: true,
       isCancelling: false,
-      activeRequestTaskId: requestTaskId,
+      activeRequestTaskId: null,
       contextId: current.contextId ?? activeContextId,
     }));
 
@@ -576,7 +580,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     const activeRequest: ActiveChatRequest = {
       abortController,
       client: a2aClient,
-      requestTaskId,
+      requestTaskId: null,
       cancelRequested: false,
       cancellationConfirmed: false,
       cancelState: "idle",
@@ -706,15 +710,23 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
     try {
       await a2aClient.sendMessageStream(
-        createTextMessageParams(content, activeContextId, requestTaskId),
+        createTextMessageParams(content, activeContextId),
         (event) => {
           const eventTaskId = readEventTaskId(event);
-          if (eventTaskId && eventTaskId !== requestTaskId) {
-            sawTaskIdMismatch = true;
-            activeRequest.failureMessage =
-              `Received mismatched task id '${eventTaskId}' while streaming '${requestTaskId}'.`;
-            activeRequest.abortController.abort();
-            return;
+          if (eventTaskId) {
+            if (activeRequest.requestTaskId === null) {
+              activeRequest.requestTaskId = eventTaskId;
+              updateTask(targetAgentKey, targetTaskId, (current) => ({
+                ...current,
+                activeRequestTaskId: eventTaskId,
+              }));
+            } else if (eventTaskId !== activeRequest.requestTaskId) {
+              sawTaskIdMismatch = true;
+              activeRequest.failureMessage =
+                `Received mismatched task id '${eventTaskId}' while streaming '${activeRequest.requestTaskId}'.`;
+              activeRequest.abortController.abort();
+              return;
+            }
           }
 
           const taskState = readEventStatusState(event);
@@ -873,7 +885,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
         ...current,
         isSending: false,
         isCancelling: false,
-        activeRequestTaskId: current.activeRequestTaskId === requestTaskId ? null : current.activeRequestTaskId,
+        activeRequestTaskId: null,
       }));
       activeRequests.delete(requestKey);
     }

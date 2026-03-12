@@ -8,6 +8,7 @@ import {
   OkResponseSchema,
   type ManagedAgentConfigPayload,
   type ManagedAgentPayload,
+  type RuntimeAgentConfigPayload,
 } from "~/a2a/schemas";
 
 export type ManagedAgent = ManagedAgentPayload;
@@ -15,8 +16,7 @@ export type ManagedAgent = ManagedAgentPayload;
 export interface ManagedAgentCreateInput {
   agent_id: string;
   image: string;
-  config_yaml: string;
-  container_port: number;
+  config: RuntimeAgentConfigPayload;
   config_mount_path: string;
 }
 
@@ -26,7 +26,7 @@ export interface ManagedAgentLogs {
 }
 
 export interface ManagedAgentConfigUpdateInput {
-  config_yaml: string;
+  config: RuntimeAgentConfigPayload;
   restart: boolean;
 }
 
@@ -81,10 +81,10 @@ export async function getManagedAgentLogs(agentId: string, tail: number = 200): 
   return payload;
 }
 
-export async function getManagedAgentConfig(agentId: string): Promise<string> {
+export async function getManagedAgentConfig(agentId: string): Promise<RuntimeAgentConfigPayload> {
   const response = await fetch(`${DEFAULT_A2A_BASE_URL}/agents/managed/${agentId}/config`);
   const payload = await readJson<ManagedAgentConfigPayload>(response, ManagedAgentConfigResponseSchema);
-  return payload.configYaml;
+  return payload.config;
 }
 
 export async function updateManagedAgentConfig(

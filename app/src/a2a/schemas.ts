@@ -32,6 +32,7 @@ export const ManagedAgentSchema = z.object({
   config_path: z.string(),
   config_mount_path: z.string(),
   container_port: z.number(),
+  a2a_mount_path: z.string(),
   container_id: StringOrNullSchema,
   host_port: z.number().nullable(),
   status: z.string(),
@@ -53,8 +54,29 @@ export const ManagedAgentLogsResponseSchema = z.object({
   logs: z.string(),
 });
 
+export const RuntimeAgentConfigSchema = z.object({
+  agent: z.object({
+    id: z.string(),
+    name: z.string(),
+    instructions: z.string(),
+    model: z.string(),
+  }),
+  a2a: z.object({
+    port: z.number(),
+    mount_path: z.string(),
+  }),
+  tools: z.object({
+    web_search: z.boolean(),
+    todo: z.boolean(),
+  }),
+  mcp: z.object({
+    enabled: z.boolean(),
+    url: z.string(),
+  }),
+});
+
 export const ManagedAgentConfigResponseSchema = z.object({
-  configYaml: z.string(),
+  config: RuntimeAgentConfigSchema,
 });
 
 export const ExternalAgentSchema = z.object({
@@ -83,4 +105,5 @@ export type AgentCardPayload = z.infer<typeof AgentCardSchema>;
 export type ManagedAgentPayload = z.infer<typeof ManagedAgentSchema>;
 export type ManagedAgentLogsPayload = z.infer<typeof ManagedAgentLogsResponseSchema>;
 export type ManagedAgentConfigPayload = z.infer<typeof ManagedAgentConfigResponseSchema>;
+export type RuntimeAgentConfigPayload = z.infer<typeof RuntimeAgentConfigSchema>;
 export type ExternalAgentPayload = z.infer<typeof ExternalAgentSchema>;

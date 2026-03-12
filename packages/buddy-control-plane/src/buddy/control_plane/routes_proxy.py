@@ -1,6 +1,7 @@
 import httpx
 from buddy.control_plane.server_state import ServerState
 from buddy.control_plane.validation import validate_agent_id
+from buddy.shared.runtime_config import runtime_agent_card_path, runtime_rpc_path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
@@ -34,9 +35,8 @@ def build_proxy_router(
     router = APIRouter()
 
     async def proxy_to_target(request: Request, target_url: str) -> Response:
-        raw_headers = dict(request.headers)
-        raw_headers.pop("host", None)
-        raw_headers.pop("content-length", None)
+        request.state.proxy_target_url = target_url
+        raw_headers = _proxy_request_headers(request)
         body = await request.body()
         client = httpx.AsyncClient(timeout=_stream_proxy_timeout(connect_timeout_s, write_timeout_s, pool_timeout_s))
         upstream_request = client.build_request(
@@ -51,6 +51,7 @@ def build_proxy_router(
         passthrough_headers = _passthrough_headers(upstream.headers)
         content_type = upstream.headers.get("content-type", "")
         if "text/event-stream" in content_type.lower():
+            request.state.proxy_streaming = True
 
             async def stream_content():
                 try:
@@ -68,6 +69,7 @@ def build_proxy_router(
                 media_type=content_type,
             )
 
+        request.state.proxy_streaming = False
         upstream_content = await upstream.aread()
         await upstream.aclose()
         await client.aclose()
@@ -88,15 +90,17 @@ def build_proxy_router(
     )
     async def proxy_managed_agent(agent_id: str, request: Request, proxy_path: str = "") -> Response:
         manager = state.managed_agent_manager
+        request.state.proxy_route = "managed"
 
         normalized_agent_id = validate_agent_id(agent_id)
-        try:
-            await run_in_threadpool(manager.resolve_target, normalized_agent_id, "/")
-        except ValueError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+        record = await run_in_threadpool(manager.get_agent, normalized_agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Agent '{normalized_agent_id}' does not exist")
+        if record.status != "running":
+            raise HTTPException(status_code=404, detail=f"Agent '{normalized_agent_id}' is not running")
 
-        mount_path = "/"
-        card_path = "/.well-known/agent-card.json"
+        mount_path = runtime_rpc_path(record.a2a_mount_path)
+        card_path = runtime_agent_card_path(record.a2a_mount_path)
         proxy_root = f"{state.base_url}/a2a/managed/{normalized_agent_id}"
         if proxy_path == ".well-known/agent-card.json":
             try:
@@ -104,8 +108,10 @@ def build_proxy_router(
             except ValueError as error:
                 raise HTTPException(status_code=404, detail=str(error)) from error
             try:
+                request.state.proxy_target_url = upstream_card_url
+                request.state.proxy_streaming = False
                 async with httpx.AsyncClient(timeout=15.0) as client:
-                    card_response = await client.get(upstream_card_url)
+                    card_response = await client.get(upstream_card_url, headers=_request_id_header(request))
                     card_response.raise_for_status()
                     card = card_response.json()
             except httpx.HTTPError as error:
@@ -132,6 +138,7 @@ def build_proxy_router(
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
     async def proxy_external_agent(agent_id: str, request: Request, proxy_path: str = "") -> Response:
+        request.state.proxy_route = "external"
         normalized_agent_id = validate_agent_id(agent_id)
         record = await run_in_threadpool(state.external_agent_manager.get_agent, normalized_agent_id)
         if record is None:
@@ -147,8 +154,10 @@ def build_proxy_router(
                     normalized_agent_id,
                     card_path,
                 )
+                request.state.proxy_target_url = upstream_card_url
+                request.state.proxy_streaming = False
                 async with httpx.AsyncClient(timeout=15.0) as client:
-                    card_response = await client.get(upstream_card_url)
+                    card_response = await client.get(upstream_card_url, headers=_request_id_header(request))
                     card_response.raise_for_status()
                     card = card_response.json()
             except httpx.HTTPError as error:
@@ -183,6 +192,7 @@ def build_proxy_router(
                         normalized_agent_id,
                         mount_path,
                     )
+                    request.state.proxy_target_url = target_url
                     client = httpx.AsyncClient(
                         timeout=_stream_proxy_timeout(connect_timeout_s, write_timeout_s, pool_timeout_s)
                     )
@@ -192,6 +202,7 @@ def build_proxy_router(
                         headers={
                             "content-type": "application/json",
                             "accept": request.headers.get("accept", "application/json"),
+                            **_request_id_header(request),
                         },
                         json=rpc_payload,
                     )
@@ -201,6 +212,7 @@ def build_proxy_router(
 
                     content_type = upstream.headers.get("content-type", "")
                     if "text/event-stream" in content_type.lower():
+                        request.state.proxy_streaming = True
 
                         async def stream_content():
                             try:
@@ -218,6 +230,7 @@ def build_proxy_router(
                             media_type=content_type,
                         )
 
+                    request.state.proxy_streaming = False
                     upstream_content = await upstream.aread()
                     await upstream.aclose()
                     await client.aclose()
@@ -242,3 +255,18 @@ def build_proxy_router(
         return await proxy_to_target(request, target_url)
 
     return router
+
+
+def _proxy_request_headers(request: Request) -> dict[str, str]:
+    raw_headers = dict(request.headers)
+    raw_headers.pop("host", None)
+    raw_headers.pop("content-length", None)
+    raw_headers.update(_request_id_header(request))
+    return raw_headers
+
+
+def _request_id_header(request: Request) -> dict[str, str]:
+    request_id = getattr(request.state, "request_id", None)
+    if request_id is None:
+        return {}
+    return {"x-request-id": request_id}

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class AgentSection(BaseModel):
@@ -19,6 +19,15 @@ class A2ASection(BaseModel):
     port: int = Field(default=8000, ge=1, le=65535)
     mount_path: str = Field(default="/a2a", min_length=1)
 
+    @field_validator("mount_path")
+    @classmethod
+    def validate_mount_path(cls, value: str) -> str:
+        if not value.startswith("/"):
+            raise ValueError("a2a.mount_path must start with '/'")
+        if value != "/" and value.endswith("/"):
+            return value.rstrip("/")
+        return value
+
 
 class ToolsSection(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -27,12 +36,20 @@ class ToolsSection(BaseModel):
     todo: bool = True
 
 
+class MCPSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    url: str = Field(default="http://127.0.0.1:18001/mcp", min_length=1)
+
+
 class RuntimeAgentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent: AgentSection
     a2a: A2ASection = Field(default_factory=A2ASection)
     tools: ToolsSection = Field(default_factory=ToolsSection)
+    mcp: MCPSection = Field(default_factory=MCPSection)
 
 
 def parse_runtime_agent_config_yaml(config_yaml: str) -> RuntimeAgentConfig:
@@ -55,3 +72,26 @@ def load_runtime_agent_config(config_path: Path) -> RuntimeAgentConfig:
         raise ValueError(f"Runtime config file does not exist: {config_path}")
     raw_yaml = config_path.read_text(encoding="utf-8")
     return parse_runtime_agent_config_yaml(raw_yaml)
+
+
+def dump_runtime_agent_config_yaml(config: RuntimeAgentConfig) -> str:
+    payload = config.model_dump(mode="python")
+    return yaml.safe_dump(payload, sort_keys=False)
+
+
+def runtime_rpc_path(mount_path: str) -> str:
+    return A2ASection(mount_path=mount_path).mount_path
+
+
+def runtime_agent_card_path(mount_path: str) -> str:
+    normalized_mount_path = runtime_rpc_path(mount_path)
+    if normalized_mount_path == "/":
+        return "/.well-known/agent-card.json"
+    return f"{normalized_mount_path}/.well-known/agent-card.json"
+
+
+def runtime_extended_card_path(mount_path: str) -> str:
+    normalized_mount_path = runtime_rpc_path(mount_path)
+    if normalized_mount_path == "/":
+        return "/agent/authenticatedExtendedCard"
+    return f"{normalized_mount_path}/agent/authenticatedExtendedCard"

@@ -6,13 +6,13 @@ Buddy is an autonomous LLM platform built around a server/client architecture.
 
 - The **server** is the core system: it creates and manages agents, and exposes them over the A2A protocol.
 - **Clients** connect to the server to communicate with and manage those agents.
-- `app/` is one of those clients.
+- `app/` is one of those clients. Always check app/AGENTS.md when working on the frontend app.
 
 The goal is to build a JARVIS-like assistant with strong tooling and extensible agent workflows.
 
+
 ## Architecture Notes
 
-- Treat `tui/` and `tui_new/` as legacy codepaths.
 - Do not do any work in legacy TUIs unless explicitly requested.
 - Prefer changes that strengthen the server/client + A2A direction.
 

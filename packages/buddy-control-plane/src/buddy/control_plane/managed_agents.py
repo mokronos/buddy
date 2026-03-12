@@ -4,15 +4,18 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
-from time import sleep
+from time import perf_counter, sleep
 from urllib.parse import urlparse
 
 import docker
 import requests
 from buddy.control_plane.validation import validate_agent_id
 from buddy.data_dirs import buddy_data_dir
-from buddy.shared.runtime_config import parse_runtime_agent_config_yaml
-from docker.errors import APIError, NotFound
+from buddy.shared.logging import emit_event, get_logger
+from buddy.shared.runtime_config import load_runtime_agent_config, parse_runtime_agent_config_yaml, runtime_agent_card_path
+from docker.errors import NotFound
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -22,6 +25,7 @@ class ManagedAgentRecord:
     config_path: str
     config_mount_path: str
     container_port: int
+    a2a_mount_path: str
     container_id: str | None
     host_port: int | None
     status: str
@@ -67,46 +71,71 @@ class ManagedAgentManager:
         extra_env: dict[str, str],
         command: list[str] | None,
     ) -> ManagedAgentRecord:
-        with self._lock:
-            agent_id = validate_agent_id(agent_id)
-            if agent_id in self._records:
-                raise ValueError(f"Agent '{agent_id}' already exists")
+        start_time = perf_counter()
+        normalized_agent_id = agent_id
+        try:
+            with self._lock:
+                normalized_agent_id = validate_agent_id(agent_id)
+                self._ensure_agent_absent(normalized_agent_id)
 
-            self._validate_config(agent_id, config_yaml)
-            config_path = self._write_config(agent_id, config_yaml)
-            now = self._now()
-            record = ManagedAgentRecord(
-                agent_id=agent_id,
-                image=image,
-                config_path=str(config_path),
-                config_mount_path=config_mount_path,
-                container_port=container_port,
-                container_id=None,
-                host_port=None,
-                status="created",
-                last_error=None,
-                created_at=now,
-                updated_at=now,
-            )
-            self._records[agent_id] = record
-            self._save_registry()
-
-            try:
-                started = self._start_container(record, extra_env=extra_env, command=command)
-            except Exception as error:
-                failed = ManagedAgentRecord(**{
-                    **asdict(record),
-                    "status": "failed",
-                    "last_error": str(error),
-                    "updated_at": self._now(),
-                })
-                self._records[agent_id] = failed
+                self._validate_config(normalized_agent_id, config_yaml)
+                runtime_config = parse_runtime_agent_config_yaml(config_yaml)
+                config_path = self._write_config(normalized_agent_id, config_yaml)
+                now = self._now()
+                record = ManagedAgentRecord(
+                    agent_id=normalized_agent_id,
+                    image=image,
+                    config_path=str(config_path),
+                    config_mount_path=config_mount_path,
+                    container_port=runtime_config.a2a.port,
+                    a2a_mount_path=runtime_config.a2a.mount_path,
+                    container_id=None,
+                    host_port=None,
+                    status="created",
+                    last_error=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+                self._records[normalized_agent_id] = record
                 self._save_registry()
-                raise
 
-            self._records[agent_id] = started
-            self._save_registry()
-            return started
+                try:
+                    started = self._start_container(record, extra_env=extra_env, command=command)
+                except Exception:
+                    self._records.pop(normalized_agent_id, None)
+                    self._save_registry()
+                    if config_path.exists():
+                        config_path.unlink()
+                    raise
+
+                self._records[normalized_agent_id] = started
+                self._save_registry()
+                result = started
+        except Exception as error:
+            self._emit_operation_event(
+                "managed_agent_create_completed",
+                start_time=start_time,
+                level="error",
+                outcome="error",
+                error=error,
+                agent_id=normalized_agent_id,
+                image=image,
+                container_port=container_port,
+                config_mount_path=config_mount_path,
+                env_keys=sorted(extra_env.keys()),
+                command_length=len(command or []),
+            )
+            raise
+
+        self._emit_operation_event(
+            "managed_agent_create_completed",
+            start_time=start_time,
+            outcome="success",
+            env_keys=sorted(extra_env.keys()),
+            command_length=len(command or []),
+            **self._record_log_fields(result),
+        )
+        return result
 
     def start_agent(
         self,
@@ -115,88 +144,164 @@ class ManagedAgentManager:
         extra_env: dict[str, str] | None = None,
         command: list[str] | None = None,
     ) -> ManagedAgentRecord:
-        with self._lock:
-            agent_id = validate_agent_id(agent_id)
-            record = self._records.get(agent_id)
-            if record is None:
-                raise ValueError(f"Agent '{agent_id}' does not exist")
+        start_time = perf_counter()
+        normalized_agent_id = agent_id
+        extra_env = extra_env or {}
+        try:
+            with self._lock:
+                normalized_agent_id = validate_agent_id(agent_id)
+                record = self._require_record(normalized_agent_id)
 
-            if record.container_id:
+                if record.container_id:
+                    try:
+                        container = self._docker.containers.get(record.container_id)
+                        container.reload()
+                        if container.status == "running":
+                            refreshed = self._refresh_status(record)
+                            self._records[normalized_agent_id] = refreshed
+                            self._save_registry()
+                            result = refreshed
+                            self._emit_operation_event(
+                                "managed_agent_start_completed",
+                                start_time=start_time,
+                                outcome="success",
+                                env_keys=sorted(extra_env.keys()),
+                                command_length=len(command or []),
+                                **self._record_log_fields(result),
+                            )
+                            return result
+                    except NotFound:
+                        pass
+
                 try:
-                    container = self._docker.containers.get(record.container_id)
-                    container.reload()
-                    if container.status == "running":
-                        refreshed = self._refresh_status(record)
-                        self._records[agent_id] = refreshed
-                        self._save_registry()
-                        return refreshed
-                except NotFound:
-                    pass
+                    started = self._start_container(
+                        record,
+                        extra_env=extra_env,
+                        command=command,
+                    )
+                except Exception as error:
+                    failed = ManagedAgentRecord(**{
+                        **asdict(record),
+                        "status": "failed",
+                        "last_error": str(error),
+                        "updated_at": self._now(),
+                    })
+                    self._records[normalized_agent_id] = failed
+                    self._save_registry()
+                    raise
 
-            try:
-                started = self._start_container(
-                    record,
-                    extra_env=extra_env or {},
-                    command=command,
-                )
-            except Exception as error:
-                failed = ManagedAgentRecord(**{
-                    **asdict(record),
-                    "status": "failed",
-                    "last_error": str(error),
-                    "updated_at": self._now(),
-                })
-                self._records[agent_id] = failed
+                self._records[normalized_agent_id] = started
                 self._save_registry()
-                raise
+                result = started
+        except Exception as error:
+            self._emit_operation_event(
+                "managed_agent_start_completed",
+                start_time=start_time,
+                level="error",
+                outcome="error",
+                error=error,
+                agent_id=normalized_agent_id,
+                env_keys=sorted(extra_env.keys()),
+                command_length=len(command or []),
+            )
+            raise
 
-            self._records[agent_id] = started
-            self._save_registry()
-            return started
+        self._emit_operation_event(
+            "managed_agent_start_completed",
+            start_time=start_time,
+            outcome="success",
+            env_keys=sorted(extra_env.keys()),
+            command_length=len(command or []),
+            **self._record_log_fields(result),
+        )
+        return result
 
     def stop_agent(self, agent_id: str) -> ManagedAgentRecord:
-        with self._lock:
-            agent_id = validate_agent_id(agent_id)
-            record = self._records.get(agent_id)
-            if record is None:
-                raise ValueError(f"Agent '{agent_id}' does not exist")
+        start_time = perf_counter()
+        normalized_agent_id = agent_id
+        try:
+            with self._lock:
+                normalized_agent_id = validate_agent_id(agent_id)
+                record = self._require_record(normalized_agent_id)
+
+                if record.container_id:
+                    try:
+                        container = self._docker.containers.get(record.container_id)
+                        container.stop(timeout=10)
+                    except NotFound:
+                        pass
+
+                updated = ManagedAgentRecord(**{
+                    **asdict(record),
+                    "status": "stopped",
+                    "last_error": None,
+                    "updated_at": self._now(),
+                })
+                self._records[normalized_agent_id] = updated
+                self._save_registry()
+                result = updated
+        except Exception as error:
+            self._emit_operation_event(
+                "managed_agent_stop_completed",
+                start_time=start_time,
+                level="error",
+                outcome="error",
+                error=error,
+                agent_id=normalized_agent_id,
+            )
+            raise
+
+        self._emit_operation_event(
+            "managed_agent_stop_completed",
+            start_time=start_time,
+            outcome="success",
+            **self._record_log_fields(result),
+        )
+        return result
+
+    def delete_agent(self, agent_id: str, remove_config: bool = False) -> None:
+        start_time = perf_counter()
+        normalized_agent_id = agent_id
+        record: ManagedAgentRecord | None = None
+        try:
+            with self._lock:
+                normalized_agent_id = validate_agent_id(agent_id)
+                record = self._records.pop(normalized_agent_id, None)
+                if record is None:
+                    self._raise_missing_agent(normalized_agent_id)
+                self._save_registry()
 
             if record.container_id:
                 try:
                     container = self._docker.containers.get(record.container_id)
-                    container.stop(timeout=10)
+                    container.remove(force=True)
                 except NotFound:
                     pass
 
-            updated = ManagedAgentRecord(**{
-                **asdict(record),
-                "status": "stopped",
-                "last_error": None,
-                "updated_at": self._now(),
-            })
-            self._records[agent_id] = updated
-            self._save_registry()
-            return updated
+            if remove_config:
+                config_path = Path(record.config_path)
+                if config_path.exists():
+                    config_path.unlink()
+        except Exception as error:
+            self._emit_operation_event(
+                "managed_agent_delete_completed",
+                start_time=start_time,
+                level="error",
+                outcome="error",
+                error=error,
+                agent_id=normalized_agent_id,
+                remove_config=remove_config,
+                **(self._record_log_fields(record) if record is not None else {}),
+            )
+            raise
 
-    def delete_agent(self, agent_id: str, remove_config: bool = False) -> None:
-        with self._lock:
-            agent_id = validate_agent_id(agent_id)
-            record = self._records.pop(agent_id, None)
-            if record is None:
-                raise ValueError(f"Agent '{agent_id}' does not exist")
-            self._save_registry()
-
-        if record.container_id:
-            try:
-                container = self._docker.containers.get(record.container_id)
-                container.remove(force=True)
-            except NotFound:
-                pass
-
-        if remove_config:
-            config_path = Path(record.config_path)
-            if config_path.exists():
-                config_path.unlink()
+        self._emit_operation_event(
+            "managed_agent_delete_completed",
+            start_time=start_time,
+            outcome="success",
+            remove_config=remove_config,
+            **self._record_log_fields(record),
+        )
 
     def get_agent_config(self, agent_id: str) -> str:
         with self._lock:
@@ -210,24 +315,56 @@ class ManagedAgentManager:
             return config_path.read_text(encoding="utf-8")
 
     def update_agent_config(self, agent_id: str, config_yaml: str, restart: bool = True) -> ManagedAgentRecord:
-        with self._lock:
-            agent_id = validate_agent_id(agent_id)
-            record = self._records.get(agent_id)
-            if record is None:
-                raise ValueError(f"Agent '{agent_id}' does not exist")
-            self._validate_config(agent_id, config_yaml)
-            Path(record.config_path).write_text(config_yaml, encoding="utf-8")
-            updated = ManagedAgentRecord(**{
-                **asdict(record),
-                "updated_at": self._now(),
-            })
-            self._records[agent_id] = updated
-            self._save_registry()
+        start_time = perf_counter()
+        normalized_agent_id = agent_id
+        try:
+            runtime_config = parse_runtime_agent_config_yaml(config_yaml)
+            with self._lock:
+                normalized_agent_id = validate_agent_id(agent_id)
+                record = self._require_record(normalized_agent_id)
+                self._validate_config(normalized_agent_id, config_yaml)
+                Path(record.config_path).write_text(config_yaml, encoding="utf-8")
+                updated_fields: dict[str, object] = {}
+                if record.status != "running" or restart:
+                    updated_fields = {
+                        "container_port": runtime_config.a2a.port,
+                        "a2a_mount_path": runtime_config.a2a.mount_path,
+                    }
+                updated = ManagedAgentRecord(**{
+                    **asdict(record),
+                    **updated_fields,
+                    "updated_at": self._now(),
+                })
+                self._records[normalized_agent_id] = updated
+                self._save_registry()
 
-        if restart and updated.status == "running":
-            self.stop_agent(agent_id)
-            return self.start_agent(agent_id)
-        return updated
+            if restart and updated.status == "running":
+                self.stop_agent(normalized_agent_id)
+                result = self.start_agent(normalized_agent_id)
+            else:
+                result = updated
+        except Exception as error:
+            self._emit_operation_event(
+                "managed_agent_update_config_completed",
+                start_time=start_time,
+                level="error",
+                outcome="error",
+                error=error,
+                agent_id=normalized_agent_id,
+                restart=restart,
+                config_size_bytes=len(config_yaml.encode("utf-8")),
+            )
+            raise
+
+        self._emit_operation_event(
+            "managed_agent_update_config_completed",
+            start_time=start_time,
+            outcome="success",
+            restart=restart,
+            config_size_bytes=len(config_yaml.encode("utf-8")),
+            **self._record_log_fields(result),
+        )
+        return result
 
     def resolve_target(self, agent_id: str, path: str) -> str:
         agent_id = validate_agent_id(agent_id)
@@ -240,38 +377,61 @@ class ManagedAgentManager:
         return f"http://127.0.0.1:{record.host_port}{suffix}"
 
     def get_agent_logs(self, agent_id: str, tail: int = 200) -> tuple[ManagedAgentRecord, str]:
+        start_time = perf_counter()
         if tail <= 0:
             raise ValueError("tail must be greater than 0")
 
-        with self._lock:
-            agent_id = validate_agent_id(agent_id)
-            record = self._records.get(agent_id)
-            if record is None:
-                raise ValueError(f"Agent '{agent_id}' does not exist")
-
-            refreshed = self._refresh_status(record)
-            self._records[agent_id] = refreshed
-            self._save_registry()
-
-        if not refreshed.container_id:
-            return refreshed, ""
-
         try:
-            container = self._docker.containers.get(refreshed.container_id)
-            logs = container.logs(tail=tail, timestamps=True)
-            return refreshed, logs.decode("utf-8", errors="replace")
-        except NotFound:
-            missing = ManagedAgentRecord(**{
-                **asdict(refreshed),
-                "container_id": None,
-                "host_port": None,
-                "status": "missing",
-                "updated_at": self._now(),
-            })
             with self._lock:
-                self._records[agent_id] = missing
+                normalized_agent_id = validate_agent_id(agent_id)
+                record = self._require_record(normalized_agent_id)
+
+                refreshed = self._refresh_status(record)
+                self._records[normalized_agent_id] = refreshed
                 self._save_registry()
-            return missing, ""
+
+            if not refreshed.container_id:
+                logs = ""
+                result = refreshed
+            else:
+                try:
+                    container = self._docker.containers.get(refreshed.container_id)
+                    logs = container.logs(tail=tail, timestamps=True).decode("utf-8", errors="replace")
+                    result = refreshed
+                except NotFound:
+                    missing = ManagedAgentRecord(**{
+                        **asdict(refreshed),
+                        "container_id": None,
+                        "host_port": None,
+                        "status": "missing",
+                        "updated_at": self._now(),
+                    })
+                    with self._lock:
+                        self._records[normalized_agent_id] = missing
+                        self._save_registry()
+                    logs = ""
+                    result = missing
+        except Exception as error:
+            self._emit_operation_event(
+                "managed_agent_get_logs_completed",
+                start_time=start_time,
+                level="error",
+                outcome="error",
+                error=error,
+                agent_id=agent_id,
+                tail=tail,
+            )
+            raise
+
+        self._emit_operation_event(
+            "managed_agent_get_logs_completed",
+            start_time=start_time,
+            outcome="success",
+            tail=tail,
+            log_size_bytes=len(logs.encode("utf-8")),
+            **self._record_log_fields(result),
+        )
+        return result, logs
 
     def _start_container(
         self,
@@ -280,6 +440,7 @@ class ManagedAgentManager:
         extra_env: dict[str, str],
         command: list[str] | None,
     ) -> ManagedAgentRecord:
+        runtime_config = self._load_runtime_config(record.config_path)
         inherited_env = {
             key: value
             for key in [
@@ -314,15 +475,19 @@ class ManagedAgentManager:
 
         self._prune_stale_agent_containers(record.agent_id)
 
-        port_key = f"{record.container_port}/tcp"
+        port_key = f"{runtime_config.a2a.port}/tcp"
         container_name = self._agent_container_name(record.agent_id)
         created_container = False
+        container = None
         try:
             container = self._docker.containers.get(container_name)
             container.reload()
             if container.status != "running":
-                container.start()
+                container.remove(force=True)
         except NotFound:
+            container = None
+
+        if container is None or container.status != "running":
             container = self._docker.containers.run(
                 record.image,
                 detach=True,
@@ -337,7 +502,8 @@ class ManagedAgentManager:
                     "buddy.agent_id": record.agent_id,
                     "buddy.config_path": record.config_path,
                     "buddy.config_mount_path": record.config_mount_path,
-                    "buddy.container_port": str(record.container_port),
+                    "buddy.container_port": str(runtime_config.a2a.port),
+                    "buddy.a2a_mount_path": runtime_config.a2a.mount_path,
                 },
             )
             created_container = True
@@ -348,11 +514,11 @@ class ManagedAgentManager:
         if not bindings:
             if created_container:
                 container.remove(force=True)
-            raise RuntimeError(f"Container for '{record.agent_id}' did not expose port {record.container_port}")
+            raise RuntimeError(f"Container for '{record.agent_id}' did not expose port {runtime_config.a2a.port}")
         host_port = int(bindings[0]["HostPort"])
 
         try:
-            self._wait_for_a2a_ready(record.agent_id, host_port)
+            self._wait_for_a2a_ready(record.agent_id, host_port, runtime_config.a2a.mount_path)
         except Exception as error:
             if created_container:
                 container.remove(force=True)
@@ -360,6 +526,8 @@ class ManagedAgentManager:
 
         return ManagedAgentRecord(**{
             **asdict(record),
+            "container_port": runtime_config.a2a.port,
+            "a2a_mount_path": runtime_config.a2a.mount_path,
             "container_id": container.id,
             "host_port": host_port,
             "status": container.status,
@@ -431,6 +599,7 @@ class ManagedAgentManager:
         self._records = loaded
 
     def reconcile_from_docker(self) -> list[ManagedAgentRecord]:
+        start_time = perf_counter()
         discovered = self._docker.containers.list(all=True, filters={"label": "buddy.managed_agent=true"})
         with self._lock:
             for container in discovered:
@@ -449,12 +618,15 @@ class ManagedAgentManager:
                     config_path = labels.get("buddy.config_path")
                     config_mount_path = labels.get("buddy.config_mount_path")
                     container_port_raw = labels.get("buddy.container_port")
+                    a2a_mount_path = labels.get("buddy.a2a_mount_path")
                     if not isinstance(config_path, str) or not isinstance(config_mount_path, str):
                         continue
                     try:
                         container_port = int(container_port_raw) if isinstance(container_port_raw, str) else 10001
                     except ValueError:
                         container_port = 10001
+                    if not isinstance(a2a_mount_path, str):
+                        a2a_mount_path = "/"
                     now = self._now()
                     image_obj = container.image
                     tags = image_obj.tags if image_obj is not None else []
@@ -464,6 +636,7 @@ class ManagedAgentManager:
                         config_path=config_path,
                         config_mount_path=config_mount_path,
                         container_port=container_port,
+                        a2a_mount_path=a2a_mount_path,
                         container_id=container.id,
                         host_port=None,
                         status=container.status,
@@ -485,7 +658,16 @@ class ManagedAgentManager:
                 self._records[agent_id] = refreshed
 
             self._save_registry()
-            return sorted(self._records.values(), key=lambda item: item.agent_id)
+            result = sorted(self._records.values(), key=lambda item: item.agent_id)
+
+        self._emit_operation_event(
+            "managed_agent_reconcile_completed",
+            start_time=start_time,
+            outcome="success",
+            discovered_count=len(discovered),
+            managed_agent_count=len(result),
+        )
+        return result
 
     def _validate_config(self, agent_id: str, config_yaml: str) -> None:
         try:
@@ -495,9 +677,9 @@ class ManagedAgentManager:
         if config.agent.id != agent_id:
             raise ValueError(f"Config agent.id ('{config.agent.id}') must match managed agent id ('{agent_id}')")
 
-    def _wait_for_a2a_ready(self, agent_id: str, host_port: int) -> None:
+    def _wait_for_a2a_ready(self, agent_id: str, host_port: int, mount_path: str) -> None:
         base_url = f"http://127.0.0.1:{host_port}"
-        agent_card_url = f"{base_url}/.well-known/agent-card.json"
+        agent_card_url = f"{base_url}{runtime_agent_card_path(mount_path)}"
         delay = 0.2
         max_attempts = 30
         for _ in range(max_attempts):
@@ -516,6 +698,58 @@ class ManagedAgentManager:
     def _save_registry(self) -> None:
         payload = {agent_id: asdict(record) for agent_id, record in self._records.items()}
         self._registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def _ensure_agent_absent(self, agent_id: str) -> None:
+        if agent_id in self._records:
+            raise ValueError(f"Agent '{agent_id}' already exists")
+
+    def _require_record(self, agent_id: str) -> ManagedAgentRecord:
+        record = self._records.get(agent_id)
+        if record is None:
+            self._raise_missing_agent(agent_id)
+        return record
+
+    @staticmethod
+    def _raise_missing_agent(agent_id: str) -> None:
+        raise ValueError(f"Agent '{agent_id}' does not exist")
+
+    @staticmethod
+    def _record_log_fields(record: ManagedAgentRecord) -> dict[str, object]:
+        return {
+            "agent_id": record.agent_id,
+            "image": record.image,
+            "container_port": record.container_port,
+            "a2a_mount_path": record.a2a_mount_path,
+            "container_id": record.container_id,
+            "host_port": record.host_port,
+            "status": record.status,
+            "config_mount_path": record.config_mount_path,
+        }
+
+    @staticmethod
+    def _load_runtime_config(config_path: str):
+        return load_runtime_agent_config(Path(config_path))
+
+    def _emit_operation_event(
+        self,
+        event: str,
+        *,
+        start_time: float,
+        outcome: str,
+        level: str = "info",
+        error: Exception | None = None,
+        **fields: object,
+    ) -> None:
+        emit_event(
+            logger,
+            event,
+            level=level,
+            duration_ms=round((perf_counter() - start_time) * 1000, 3),
+            outcome=outcome,
+            error_type=type(error).__name__ if error is not None else None,
+            error_message=str(error) if error is not None else None,
+            **fields,
+        )
 
     def _agent_container_name(self, agent_id: str) -> str:
         return f"buddy-agent-{self._slug(agent_id)}"

@@ -13,10 +13,14 @@ if not runtime_config_path:
 
 runtime_config = load_runtime_agent_config(Path(runtime_config_path))
 runtime_agents = build_runtime_agents(runtime_config)
-app = create_runtime_app(cast(dict[str, Agent], runtime_agents))
+app = create_runtime_app(
+    cast(dict[str, Agent], runtime_agents),
+    port=runtime_config.a2a.port,
+    mount_path=runtime_config.a2a.mount_path,
+)
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=runtime_config.a2a.port)

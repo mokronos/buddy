@@ -1,5 +1,4 @@
 import logging
-import os
 from time import sleep
 from typing import Any, NoReturn, cast
 
@@ -14,10 +13,6 @@ from pydantic_ai.toolsets import FunctionToolset, ToolsetTool
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-
-def _env_pool_mcp_url() -> str:
-    return os.environ.get("BUDDY_ENV_POOL_MCP_URL", "http://127.0.0.1:18001/mcp")
 
 
 class OptionalMCPServerStreamableHTTP(MCPServerStreamableHTTP):
@@ -115,8 +110,12 @@ def create_agent(
     model: str = "openrouter:openrouter/free",
     enable_web_search: bool = True,
     enable_todo: bool = True,
+    enable_mcp: bool = True,
+    mcp_url: str = "http://127.0.0.1:18001/mcp",
 ) -> Agent[None, str]:
-    toolsets = [OptionalMCPServerStreamableHTTP(_env_pool_mcp_url())]
+    toolsets: list[object] = []
+    if enable_mcp:
+        toolsets.append(OptionalMCPServerStreamableHTTP(mcp_url))
     if enable_web_search:
         toolsets.append(web_tools)
     if enable_todo:

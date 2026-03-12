@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -33,10 +34,24 @@ logger = get_logger(__name__)
 
 def create_app() -> FastAPI:
     configure_logging("buddy-control-plane")
-    app = FastAPI()
-
     external_agent_manager = ExternalAgentManager()
     managed_agent_manager = ManagedAgentManager()
+    state = ServerState(
+        base_url=base_url,
+        session_store=session_store,
+        external_agent_manager=external_agent_manager,
+        managed_agent_manager=managed_agent_manager,
+    )
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        await _startup_control_plane(managed_agent_manager)
+        try:
+            yield
+        finally:
+            await _shutdown_control_plane(managed_agent_manager)
+
+    app = FastAPI(lifespan=_lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -93,13 +108,6 @@ def create_app() -> FastAPI:
                     error_message=str(error) if error is not None else None,
                 )
 
-    state = ServerState(
-        base_url=base_url,
-        session_store=session_store,
-        external_agent_manager=external_agent_manager,
-        managed_agent_manager=managed_agent_manager,
-    )
-
     proxy_connect_timeout_s = float(os.environ.get("BUDDY_A2A_PROXY_CONNECT_TIMEOUT_S", "15"))
     proxy_write_timeout_s = float(os.environ.get("BUDDY_A2A_PROXY_WRITE_TIMEOUT_S", "120"))
     proxy_pool_timeout_s = float(os.environ.get("BUDDY_A2A_PROXY_POOL_TIMEOUT_S", "120"))
@@ -115,77 +123,81 @@ def create_app() -> FastAPI:
         )
     )
 
-    @app.on_event("startup")
-    async def _startup() -> None:
-        auto_start_enabled = os.environ.get("BUDDY_MANAGED_AGENT_AUTO_START_ALL", "true").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
-        started_count = 0
-        failed_count = 0
-        await run_in_threadpool(managed_agent_manager.reconcile_from_docker)
+    return app
 
-        if auto_start_enabled:
-            records = await run_in_threadpool(managed_agent_manager.list_agents)
-            for record in records:
-                if record.status == "running":
-                    continue
-                try:
-                    await run_in_threadpool(managed_agent_manager.start_agent, record.agent_id)
-                    started_count += 1
-                except Exception as error:
-                    failed_count += 1
-                    emit_event(
-                        logger,
-                        "managed_agent_autostart_failed",
-                        level="error",
-                        agent_id=record.agent_id,
-                        error_type=type(error).__name__,
-                        error_message=str(error),
-                        outcome="error",
-                    )
 
-        emit_event(
-            logger,
-            "control_plane_startup_completed",
-            auto_start_enabled=auto_start_enabled,
-            auto_started_count=started_count,
-            auto_start_failed_count=failed_count,
-        )
+def _managed_agent_autostart_enabled() -> bool:
+    return os.environ.get("BUDDY_MANAGED_AGENT_AUTO_START_ALL", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:
-        stopped_count = 0
-        failed_count = 0
+
+async def _startup_control_plane(managed_agent_manager: ManagedAgentManager) -> None:
+    auto_start_enabled = _managed_agent_autostart_enabled()
+    started_count = 0
+    failed_count = 0
+    await run_in_threadpool(managed_agent_manager.reconcile_from_docker)
+
+    if auto_start_enabled:
         records = await run_in_threadpool(managed_agent_manager.list_agents)
         for record in records:
-            if record.container_id and record.status == "running":
-                try:
-                    await run_in_threadpool(managed_agent_manager.stop_agent, record.agent_id)
-                    stopped_count += 1
-                except Exception as error:
-                    failed_count += 1
-                    emit_event(
-                        logger,
-                        "managed_agent_shutdown_stop_failed",
-                        level="error",
-                        agent_id=record.agent_id,
-                        container_id=record.container_id,
-                        outcome="error",
-                        error_type=type(error).__name__,
-                        error_message=str(error),
-                    )
+            if record.status == "running":
+                continue
+            try:
+                await run_in_threadpool(managed_agent_manager.start_agent, record.agent_id)
+                started_count += 1
+            except Exception as error:
+                failed_count += 1
+                emit_event(
+                    logger,
+                    "managed_agent_autostart_failed",
+                    level="error",
+                    agent_id=record.agent_id,
+                    error_type=type(error).__name__,
+                    error_message=str(error),
+                    outcome="error",
+                )
 
-        emit_event(
-            logger,
-            "control_plane_shutdown_completed",
-            stopped_count=stopped_count,
-            stop_failed_count=failed_count,
-        )
+    emit_event(
+        logger,
+        "control_plane_startup_completed",
+        auto_start_enabled=auto_start_enabled,
+        auto_started_count=started_count,
+        auto_start_failed_count=failed_count,
+    )
 
-    return app
+
+async def _shutdown_control_plane(managed_agent_manager: ManagedAgentManager) -> None:
+    stopped_count = 0
+    failed_count = 0
+    records = await run_in_threadpool(managed_agent_manager.list_agents)
+    for record in records:
+        if record.container_id and record.status == "running":
+            try:
+                await run_in_threadpool(managed_agent_manager.stop_agent, record.agent_id)
+                stopped_count += 1
+            except Exception as error:
+                failed_count += 1
+                emit_event(
+                    logger,
+                    "managed_agent_shutdown_stop_failed",
+                    level="error",
+                    agent_id=record.agent_id,
+                    container_id=record.container_id,
+                    outcome="error",
+                    error_type=type(error).__name__,
+                    error_message=str(error),
+                )
+
+    emit_event(
+        logger,
+        "control_plane_shutdown_completed",
+        stopped_count=stopped_count,
+        stop_failed_count=failed_count,
+    )
 
 
 def _agent_kind_for_request(path: str, proxy_route: str | None) -> str | None:

@@ -3,6 +3,7 @@ import os
 from time import sleep
 from typing import Any, NoReturn, cast
 
+from buddy.runtime.tools.communicate import communicate
 from buddy.runtime.tools.todo import todoadd, tododelete, todoread, todoupdate
 from buddy.runtime.tools.web_search import fetch_web_page, web_search
 from dotenv import load_dotenv
@@ -105,6 +106,12 @@ todo_tools = FunctionToolset(
     ],
 )
 
+communicate_tools = FunctionToolset(
+    tools=[
+        communicate,
+    ],
+)
+
 
 def create_agent(
     name: str,
@@ -118,6 +125,7 @@ def create_agent(
         toolsets.append(OptionalMCPServerStreamableHTTP(mcp_server_url))
     toolsets.append(web_tools)
     toolsets.append(todo_tools)
+    toolsets.append(communicate_tools)
 
     return Agent(
         model=model,

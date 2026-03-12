@@ -15,7 +15,7 @@ from pydantic_ai import Agent
 load_dotenv()
 
 
-port = os.environ.get("PORT", 10001)
+port = os.environ.get("PORT", 8000)
 public_url = os.environ.get("BUDDY_PUBLIC_URL")
 base_url = public_url.rstrip("/") if public_url else f"http://localhost:{port}"
 

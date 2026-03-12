@@ -126,16 +126,10 @@ class ManagedAgentManager:
                     container = self._docker.containers.get(record.container_id)
                     container.reload()
                     if container.status == "running":
-                        network_name = self._agent_network_name(agent_id)
-                        env_daemon_name = self._agent_env_daemon_name(agent_id)
-                        expected_docker_hosts = (f"tcp://{env_daemon_name}:2375",)
-                        if self._runtime_container_compatible(container, expected_docker_hosts, network_name):
-                            self._ensure_agent_network(agent_id)
-                            self._ensure_env_daemon_container(agent_id, network_name)
-                            refreshed = self._refresh_status(record)
-                            self._records[agent_id] = refreshed
-                            self._save_registry()
-                            return refreshed
+                        refreshed = self._refresh_status(record)
+                        self._records[agent_id] = refreshed
+                        self._save_registry()
+                        return refreshed
                 except NotFound:
                     pass
 
@@ -174,12 +168,6 @@ class ManagedAgentManager:
                 except NotFound:
                     pass
 
-            try:
-                env_daemon = self._docker.containers.get(self._agent_env_daemon_name(agent_id))
-                env_daemon.stop(timeout=10)
-            except NotFound:
-                pass
-
             updated = ManagedAgentRecord(**{
                 **asdict(record),
                 "status": "stopped",
@@ -204,20 +192,6 @@ class ManagedAgentManager:
                 container.remove(force=True)
             except NotFound:
                 pass
-
-        try:
-            env_daemon = self._docker.containers.get(self._agent_env_daemon_name(agent_id))
-            env_daemon.remove(force=True)
-        except NotFound:
-            pass
-
-        try:
-            network = self._docker.networks.get(self._agent_network_name(agent_id))
-            network.remove()
-        except NotFound:
-            pass
-        except APIError:
-            pass
 
         if remove_config:
             config_path = Path(record.config_path)
@@ -315,17 +289,11 @@ class ManagedAgentManager:
                 "LANGFUSE_SECRET_KEY",
                 "LANGFUSE_HOST",
                 "LANGFUSE_BASE_URL",
-                "BUDDY_ENV_IMAGE",
-                "BUDDY_ENV_WARM_CONTAINERS",
             ]
             if (value := os.environ.get(key))
         }
-        network_name = self._agent_network_name(record.agent_id)
-        env_daemon_name = self._agent_env_daemon_name(record.agent_id)
-        docker_host = f"tcp://{env_daemon_name}:2375"
         env = {
             "BUDDY_AGENT_CONFIG": record.config_mount_path,
-            "DOCKER_HOST": docker_host,
             **inherited_env,
             **extra_env,
         }
@@ -345,9 +313,6 @@ class ManagedAgentManager:
             env[key] = f"{parsed.scheme}://host.docker.internal{port_part}{path_part}"
 
         self._prune_stale_agent_containers(record.agent_id)
-        self._prune_stale_env_daemon_containers(record.agent_id)
-        self._ensure_agent_network(record.agent_id)
-        self._ensure_env_daemon_container(record.agent_id, network_name)
 
         port_key = f"{record.container_port}/tcp"
         container_name = self._agent_container_name(record.agent_id)
@@ -355,9 +320,6 @@ class ManagedAgentManager:
         try:
             container = self._docker.containers.get(container_name)
             container.reload()
-            if not self._runtime_container_compatible(container, (docker_host,), network_name):
-                container.remove(force=True)
-                raise NotFound("incompatible runtime container")
             if container.status != "running":
                 container.start()
         except NotFound:
@@ -367,7 +329,6 @@ class ManagedAgentManager:
                 name=container_name,
                 command=command,
                 environment=env,
-                network=network_name,
                 ports={port_key: ("127.0.0.1", 0)},
                 extra_hosts={"host.docker.internal": "host-gateway"},
                 volumes={record.config_path: {"bind": record.config_mount_path, "mode": "ro"}},
@@ -559,78 +520,6 @@ class ManagedAgentManager:
     def _agent_container_name(self, agent_id: str) -> str:
         return f"buddy-agent-{self._slug(agent_id)}"
 
-    def _agent_env_daemon_name(self, agent_id: str) -> str:
-        return f"buddy-agent-env-{self._slug(agent_id)}"
-
-    def _agent_network_name(self, agent_id: str) -> str:
-        return f"buddy-agent-net-{self._slug(agent_id)}"
-
-    def _ensure_agent_network(self, agent_id: str) -> None:
-        network_name = self._agent_network_name(agent_id)
-        try:
-            self._docker.networks.get(network_name)
-        except NotFound:
-            self._docker.networks.create(
-                network_name,
-                driver="bridge",
-                labels={
-                    "buddy.managed_agent_network": "true",
-                    "buddy.agent_id": agent_id,
-                },
-            )
-
-    def _ensure_env_daemon_container(self, agent_id: str, network_name: str) -> None:
-        daemon_name = self._agent_env_daemon_name(agent_id)
-        daemon_image = os.environ.get("BUDDY_ENV_DAEMON_IMAGE", "docker:27-dind")
-
-        try:
-            env_daemon = self._docker.containers.get(daemon_name)
-            env_daemon.reload()
-            networks = env_daemon.attrs.get("NetworkSettings", {}).get("Networks", {})
-            if network_name not in networks:
-                network = self._docker.networks.get(network_name)
-                network.connect(env_daemon)
-            if env_daemon.status != "running":
-                env_daemon.start()
-            return
-        except NotFound:
-            pass
-
-        self._docker.containers.run(
-            daemon_image,
-            detach=True,
-            name=daemon_name,
-            command=["dockerd", "--host=tcp://0.0.0.0:2375"],
-            environment={"DOCKER_TLS_CERTDIR": ""},
-            privileged=True,
-            network=network_name,
-            labels={
-                "buddy.managed_agent_env_daemon": "true",
-                "buddy.agent_id": agent_id,
-            },
-        )
-
-    @staticmethod
-    def _runtime_container_compatible(
-        container,
-        expected_docker_hosts: tuple[str, ...],
-        network_name: str,
-    ) -> bool:
-        container_env = container.attrs.get("Config", {}).get("Env", [])
-        if not isinstance(container_env, list):
-            return False
-
-        if expected_docker_hosts:
-            expected_entries = {f"DOCKER_HOST={value}" for value in expected_docker_hosts}
-            if not any(entry in container_env for entry in expected_entries):
-                return False
-
-        networks = container.attrs.get("NetworkSettings", {}).get("Networks", {})
-        if network_name not in networks:
-            return False
-
-        return True
-
     def _prune_stale_agent_containers(self, agent_id: str) -> None:
         canonical_name = self._agent_container_name(agent_id)
         managed_containers = self._docker.containers.list(
@@ -638,20 +527,6 @@ class ManagedAgentManager:
             filters={"label": ["buddy.managed_agent=true", f"buddy.agent_id={agent_id}"]},
         )
         for container in managed_containers:
-            container.reload()
-            if container.name == canonical_name:
-                continue
-            if container.status == "running":
-                continue
-            container.remove(force=True)
-
-    def _prune_stale_env_daemon_containers(self, agent_id: str) -> None:
-        canonical_name = self._agent_env_daemon_name(agent_id)
-        daemon_containers = self._docker.containers.list(
-            all=True,
-            filters={"label": ["buddy.managed_agent_env_daemon=true", f"buddy.agent_id={agent_id}"]},
-        )
-        for container in daemon_containers:
             container.reload()
             if container.name == canonical_name:
                 continue

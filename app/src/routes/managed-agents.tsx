@@ -28,7 +28,7 @@ const defaultConfigYaml = `agent:
   model: openrouter:openrouter/free
 
 a2a:
-  port: 10001
+  port: 8000
 `;
 
 function syncAgentIdInConfig(configYaml: string, agentId: string): string {
@@ -84,7 +84,7 @@ export default function ManagedAgentsPage() {
 
   const [agentId, setAgentId] = createSignal("");
   const [image, setImage] = createSignal("buddy-agent-runtime:latest");
-  const [containerPort, setContainerPort] = createSignal("10001");
+  const [containerPort, setContainerPort] = createSignal("8000");
   const [configMountPath, setConfigMountPath] = createSignal("/etc/buddy/agent.yaml");
   const [configYaml, setConfigYaml] = createSignal(defaultConfigYaml);
   const [editingManagedAgentId, setEditingManagedAgentId] = createSignal<string | null>(null);

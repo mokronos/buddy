@@ -25,7 +25,7 @@ def test_update_agent_config_restarts_running_agent(tmp_path) -> None:
             image="buddy-agent-runtime:latest",
             config_path=str(config_path),
             config_mount_path="/etc/buddy/agent.yaml",
-            container_port=10001,
+            container_port=8000,
             container_id="abc123",
             host_port=11001,
             status="running",

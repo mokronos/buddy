@@ -52,7 +52,7 @@ def _default_managed_agent_yaml() -> str:
   model: openrouter:openrouter/free
 
 a2a:
-  port: 10001
+  port: 8000
 """
 
 
@@ -105,7 +105,7 @@ def create_app() -> FastAPI:
                     agent_id=default_agent_id,
                     image=os.environ.get("BUDDY_DEFAULT_MANAGED_AGENT_IMAGE", "buddy-agent-runtime:latest"),
                     config_yaml=_default_managed_agent_yaml(),
-                    container_port=_int_env("BUDDY_DEFAULT_MANAGED_AGENT_PORT", 10001),
+                    container_port=_int_env("BUDDY_DEFAULT_MANAGED_AGENT_PORT", 8000),
                     config_mount_path="/etc/buddy/agent.yaml",
                     extra_env={},
                     command=None,

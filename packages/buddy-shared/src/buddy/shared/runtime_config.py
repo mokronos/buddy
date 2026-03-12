@@ -16,7 +16,7 @@ class AgentSection(BaseModel):
 class A2ASection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    port: int = Field(default=10001, ge=1, le=65535)
+    port: int = Field(default=8000, ge=1, le=65535)
     mount_path: str = Field(default="/a2a", min_length=1)
 
 

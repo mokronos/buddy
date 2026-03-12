@@ -494,10 +494,6 @@ src/buddy/
 │   │   └── utils.py           # A2A conversion and extraction utilities
 │   ├── models/                # Model adapters
 │   └── tools/                 # Built-in tool implementations
-├── environment/               # Tool environment container management
-│   ├── manager.py             # Runtime-local environment pool lifecycle
-│   ├── runtime.py             # Runtime manager interface/helpers
-│   └── docker/                # Docker build/runtime assets
 └── shared/
     └── runtime_config.py      # Shared runtime YAML schema/validation
 

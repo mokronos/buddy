@@ -48,7 +48,7 @@ agent:
   model: openrouter:openrouter/free
 
 a2a:
-  port: 10001
+  port: 8000
   mount_path: /a2a
 
 tools:
@@ -99,7 +99,6 @@ src/buddy/
 │   ├── server.py            # FastAPI app composition + startup/shutdown
 │   ├── routes_agents.py     # Managed/external agent CRUD endpoints
 │   ├── routes_proxy.py      # A2A proxy routes for managed/external agents
-│   ├── routes_runtime.py    # Internal runtime endpoints used by containers
 │   ├── managed_agents.py    # Docker-backed managed agent lifecycle
 │   └── external_agents.py   # External agent registry
 ├── runtime/
@@ -107,9 +106,6 @@ src/buddy/
 │   ├── config.py            # Build runtime agent from YAML config
 │   ├── agent.py             # Agent + tools wiring
 │   └── a2a/server.py        # A2A server and agent-card setup
-├── environment/
-│   ├── manager.py           # Local tool environment pool
-│   └── runtime_api.py       # Runtime -> control plane API client
 └── shared/runtime_config.py # Shared YAML schema validation
 
 app/src/                     # SolidStart client talking to control plane APIs

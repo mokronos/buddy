@@ -15,6 +15,7 @@ tools:
 """
     )
     assert config.agent.id == "demo-agent"
+    assert config.a2a.port == 8000
     assert config.tools.web_search is True
     assert config.tools.todo is False
 

@@ -12,7 +12,7 @@ class ManagedAgentCreateRequest(BaseModel):
     agent_id: str = Field(min_length=1, max_length=63)
     image: str = "buddy-agent-runtime:latest"
     config_yaml: str
-    container_port: int = 10001
+    container_port: int = 8000
     config_mount_path: str = "/etc/buddy/agent.yaml"
     env: dict[str, str] = Field(default_factory=dict)
     command: list[str] | None = None

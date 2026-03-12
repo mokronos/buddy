@@ -2,7 +2,10 @@
 
 ## Important Commands
 
-Use bun for package management and runtime.
+- Use bun for package management and runtime.
+
+## Components
+- Use daisy-ui for the components; only use custom components when absolutely necessary.
 
 
 ## Code Style

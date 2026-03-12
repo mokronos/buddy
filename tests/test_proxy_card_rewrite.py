@@ -1,6 +1,6 @@
 from typing import cast
 
-from buddy.control_plane.routes_proxy import rewrite_card_payload
+from buddy.control_plane.routes.proxy import rewrite_card_payload
 
 
 def test_rewrite_card_updates_url() -> None:

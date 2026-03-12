@@ -6,9 +6,9 @@ from uuid import uuid4
 
 from buddy.control_plane.external_agents import ExternalAgentManager
 from buddy.control_plane.managed_agents import ManagedAgentManager
-from buddy.control_plane.routes_agents import build_agents_router
-from buddy.control_plane.routes_proxy import build_proxy_router
-from buddy.control_plane.routes_sessions import build_sessions_router
+from buddy.control_plane.routes.agents import build_agents_router
+from buddy.control_plane.routes.proxy import build_proxy_router
+from buddy.control_plane.routes.sessions import build_sessions_router
 from buddy.control_plane.server_state import ServerState
 from buddy.session_store import SessionStore
 from buddy.shared.logging import configure_logging, emit_event, get_logger, request_logging_context

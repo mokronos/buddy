@@ -1,6 +1,10 @@
 from buddy.control_plane.server_state import ServerState
 from buddy.control_plane.validation import validate_agent_id
-from buddy.shared.runtime_config import RuntimeAgentConfig, dump_runtime_agent_config_yaml, parse_runtime_agent_config_yaml
+from buddy.shared.runtime_config import (
+    RuntimeAgentConfig,
+    dump_runtime_agent_config_yaml,
+    parse_runtime_agent_config_yaml,
+)
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field

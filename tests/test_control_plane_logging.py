@@ -9,7 +9,7 @@ from buddy.control_plane.managed_agents import ManagedAgentManager, ManagedAgent
 from buddy.shared.logging import configure_logging
 from fastapi.testclient import TestClient
 
-from buddy.control_plane import routes_proxy
+from buddy.control_plane.routes import proxy as routes_proxy
 from buddy.control_plane import server as server_module
 
 

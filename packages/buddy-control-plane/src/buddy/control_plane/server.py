@@ -1,11 +1,6 @@
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.concurrency import run_in_threadpool
-
 from buddy.control_plane.external_agents import ExternalAgentManager
 from buddy.control_plane.managed_agents import ManagedAgentManager
 from buddy.control_plane.routes_agents import build_agents_router
@@ -13,6 +8,10 @@ from buddy.control_plane.routes_proxy import build_proxy_router
 from buddy.control_plane.routes_sessions import build_sessions_router
 from buddy.control_plane.server_state import ServerState
 from buddy.session_store import SessionStore
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 
 load_dotenv()
 
@@ -63,9 +62,6 @@ def create_app() -> FastAPI:
     external_agent_manager = ExternalAgentManager()
     managed_agent_manager = ManagedAgentManager()
 
-    agent_index: list[dict[str, str]] = []
-    default_agent_key = None
-
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
@@ -79,8 +75,6 @@ def create_app() -> FastAPI:
         session_store=session_store,
         external_agent_manager=external_agent_manager,
         managed_agent_manager=managed_agent_manager,
-        default_agent_key=default_agent_key,
-        agent_index=agent_index,
     )
 
     proxy_connect_timeout_s = float(os.environ.get("BUDDY_A2A_PROXY_CONNECT_TIMEOUT_S", "15"))

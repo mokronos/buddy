@@ -9,11 +9,10 @@ from urllib.parse import urlparse
 
 import docker
 import requests
-from docker.errors import APIError, NotFound
-
 from buddy.control_plane.validation import validate_agent_id
-from buddy.shared.runtime_config import parse_runtime_agent_config_yaml
 from buddy.data_dirs import buddy_data_dir
+from buddy.shared.runtime_config import parse_runtime_agent_config_yaml
+from docker.errors import APIError, NotFound
 
 
 @dataclass
@@ -546,10 +545,6 @@ class ManagedAgentManager:
                     payload = agents_response.json()
                     if isinstance(payload, dict) and isinstance(payload.get("agents"), list):
                         return
-
-                fallback_response = requests.get(f"{base_url}/.well-known/agent-card.json", timeout=2)
-                if fallback_response.ok:
-                    return
             except requests.RequestException:
                 pass
             sleep(delay)

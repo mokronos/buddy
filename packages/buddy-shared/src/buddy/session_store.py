@@ -1,7 +1,7 @@
 import json
-from importlib import import_module
 import sqlite3
 from datetime import UTC, datetime
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +56,7 @@ class SessionStore:
 
     def load_messages(self, session_id: str) -> list[Any]:
         pydantic_ai = import_module("pydantic_ai")
-        model_messages_adapter = getattr(pydantic_ai, "ModelMessagesTypeAdapter")
+        model_messages_adapter = pydantic_ai.ModelMessagesTypeAdapter
 
         payloads = self.load_messages_payload(session_id)
         if not payloads:
@@ -73,7 +73,7 @@ class SessionStore:
 
     def save_messages(self, session_id: str, messages: list[Any] | object) -> None:
         pydantic_core = import_module("pydantic_core")
-        to_jsonable_python = getattr(pydantic_core, "to_jsonable_python")
+        to_jsonable_python = pydantic_core.to_jsonable_python
 
         payloads = to_jsonable_python(messages)
         if not isinstance(payloads, list):

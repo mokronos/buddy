@@ -290,16 +290,16 @@ interface DomainEvent {
 }
 
 // REST Endpoints
-GET    /api/v1/sessions                    // List sessions
-POST   /api/v1/sessions                    // Create session
-GET    /api/v1/sessions/:id                // Get session + messages + events
-POST   /api/v1/sessions/:id/messages       // Add user message (triggers agent)
-POST   /api/v1/sessions/:id/fork           // Fork session at point
-PUT    /api/v1/sessions/:id/messages/:msgId // Edit message (creates fork)
-DELETE /api/v1/sessions/:id                // Delete session
+GET    /sessions                    // List sessions
+POST   /sessions                    // Create session
+GET    /sessions/:id                // Get session + messages + events
+POST   /sessions/:id/messages       // Add user message (triggers agent)
+POST   /sessions/:id/fork           // Fork session at point
+PUT    /sessions/:id/messages/:msgId // Edit message (creates fork)
+DELETE /sessions/:id                // Delete session
 
 // SSE Endpoint
-GET    /api/v1/events?session_ids[]=...    // Subscribe to session events
+GET    /events?session_ids[]=...    // Subscribe to session events
 ```
 
 ### A2A Gateway (Internal)
@@ -476,10 +476,9 @@ src/buddy/
 ├── control_plane/             # Control-plane APIs and orchestration
 │   ├── server.py              # App composition and startup/shutdown
 │   ├── server_state.py        # Shared state passed into routers
-│   ├── routes_sessions.py     # /sessions and /api/v1/sessions
+│   ├── routes_sessions.py     # /sessions
 │   ├── routes_agents.py       # Managed/external agent APIs
 │   ├── routes_proxy.py        # /a2a/managed/* and /a2a/external/* proxy
-│   ├── routes_runtime.py      # Internal runtime APIs for tool containers
 │   ├── managed_agents.py      # Docker lifecycle for managed runtime agents
 │   ├── external_agents.py     # Registry for external A2A agents
 │   └── validation.py          # Agent id and external URL validation
@@ -496,9 +495,8 @@ src/buddy/
 │   ├── models/                # Model adapters
 │   └── tools/                 # Built-in tool implementations
 ├── environment/               # Tool environment container management
-│   ├── manager.py             # Local environment pool lifecycle
-│   ├── runtime_api.py         # Runtime-side API client to control plane
-│   ├── runtime.py             # Runtime manager data models/helpers
+│   ├── manager.py             # Runtime-local environment pool lifecycle
+│   ├── runtime.py             # Runtime manager interface/helpers
 │   └── docker/                # Docker build/runtime assets
 └── shared/
     └── runtime_config.py      # Shared runtime YAML schema/validation
@@ -511,7 +509,7 @@ app/
 
 ### Current State
 - FastAPI control plane composes routers from `src/buddy/control_plane/`
-- Domain APIs are served under `/api/v1/*` with compatibility aliases like `/sessions` and `/agents`
+- Domain APIs are served under `/sessions` and `/agents`
 - A2A remains at the boundary through proxies (`/a2a/managed/{agent_id}` and `/a2a/external/{agent_id}`)
 - Runtime agents run from `src/buddy/runtime/` and are configured through mounted YAML
 - Session history and events persist in SQLite (`sessions.db`) via `SessionStore`
@@ -526,15 +524,15 @@ app/
    ALTER TABLE sessions ADD COLUMN metadata_json TEXT DEFAULT '{}';
    ```
 
-2. **Dual Write** (backward compatible)
+2. **Dual Write**
    - Continue writing to existing tables
    - Start writing to new tables
    - Backfill existing data
 
-3. **API Versioning**
-   - Keep `/sessions` for old clients
-   - Add `/api/v1/sessions` with new schema
+3. **API Migration**
+   - Introduce new API shape under `/sessions`
    - Migrate frontend to new API
+   - Remove old API shape immediately after migration
 
 4. **Cleanup**
    - Remove old endpoints

@@ -2,11 +2,10 @@ import os
 from pathlib import Path
 from typing import cast
 
-from pydantic_ai import Agent
-
 from buddy.runtime.a2a.server import create_runtime_app
 from buddy.runtime.config import build_runtime_agents
 from buddy.shared.runtime_config import load_runtime_agent_config
+from pydantic_ai import Agent
 
 runtime_config_path = os.environ.get("BUDDY_AGENT_CONFIG")
 if not runtime_config_path:

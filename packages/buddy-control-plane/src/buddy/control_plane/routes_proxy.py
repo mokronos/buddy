@@ -1,12 +1,9 @@
-from uuid import uuid4
-
 import httpx
+from buddy.control_plane.server_state import ServerState
+from buddy.control_plane.validation import validate_agent_id
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
-
-from buddy.control_plane.server_state import ServerState
-from buddy.control_plane.validation import validate_agent_id
 
 
 def rewrite_card_payload(card: object, proxy_root: str, preferred_transport: str | None = None) -> object:
@@ -91,8 +88,6 @@ def build_proxy_router(
     )
     async def proxy_managed_agent(agent_id: str, request: Request, proxy_path: str = "") -> Response:
         manager = state.managed_agent_manager
-        if manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
 
         normalized_agent_id = validate_agent_id(agent_id)
         try:
@@ -232,74 +227,6 @@ def build_proxy_router(
                         headers=passthrough_headers,
                         media_type=content_type or None,
                     )
-
-        stream_bridge_paths = {
-            "message/stream",
-            "message:stream",
-            "v1/message/stream",
-            "v1/message:stream",
-        }
-        if request.method == "POST" and proxy_path.strip("/") in stream_bridge_paths:
-            try:
-                rest_payload = await request.json()
-            except Exception as error:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid JSON body for external stream request: {error}",
-                ) from error
-            if not isinstance(rest_payload, dict):
-                raise HTTPException(status_code=400, detail="Invalid stream request: body must be an object")
-
-            rpc_payload = {
-                "jsonrpc": "2.0",
-                "id": str(uuid4()),
-                "method": "message/stream",
-                "params": rest_payload,
-            }
-
-            target_url = await run_in_threadpool(
-                state.external_agent_manager.resolve_target, normalized_agent_id, mount_path
-            )
-            client = httpx.AsyncClient(
-                timeout=_stream_proxy_timeout(connect_timeout_s, write_timeout_s, pool_timeout_s)
-            )
-            upstream_request = client.build_request(
-                "POST",
-                target_url,
-                headers={"content-type": "application/json", "accept": "text/event-stream"},
-                json=rpc_payload,
-            )
-            upstream = await client.send(upstream_request, stream=True)
-
-            passthrough_headers = _passthrough_headers(upstream.headers)
-
-            content_type = upstream.headers.get("content-type", "")
-            if "text/event-stream" not in content_type.lower():
-                upstream_content = await upstream.aread()
-                await upstream.aclose()
-                await client.aclose()
-                return Response(
-                    content=upstream_content,
-                    status_code=upstream.status_code,
-                    headers=passthrough_headers,
-                    media_type=content_type or None,
-                )
-
-            async def stream_content():
-                try:
-                    async for chunk in upstream.aiter_bytes(chunk_size=1024):
-                        if chunk:
-                            yield chunk
-                finally:
-                    await upstream.aclose()
-                    await client.aclose()
-
-            return StreamingResponse(
-                stream_content(),
-                status_code=upstream.status_code,
-                headers=passthrough_headers,
-                media_type=content_type,
-            )
 
         relative_path = proxy_path.strip("/")
         upstream_path = f"{mount_path.rstrip('/')}/{relative_path}" if relative_path else mount_path

@@ -8,6 +8,11 @@ from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState
 from a2a.utils import new_agent_text_message, new_task
+from buddy.environment.runtime import EnvironmentRuntime
+from buddy.runtime.a2a.event_writer import SessionEventWriter
+from buddy.runtime.a2a.utils import simple_data_part, simple_text_part
+from buddy.runtime.deps import AgentDeps
+from buddy.session_store import SessionStore
 from devtools import pprint
 from langfuse import get_client
 from pydantic_ai import (
@@ -24,12 +29,6 @@ from pydantic_ai import (
     ToolCallPart,
     ToolReturnPart,
 )
-
-from buddy.runtime.a2a.event_writer import SessionEventWriter
-from buddy.runtime.a2a.utils import simple_data_part, simple_text_part
-from buddy.runtime.deps import AgentDeps
-from buddy.environment.runtime import EnvironmentRuntime
-from buddy.session_store import SessionStore
 
 
 class PyAIAgentExecutor(AgentExecutor):

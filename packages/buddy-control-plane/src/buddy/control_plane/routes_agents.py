@@ -1,12 +1,11 @@
 import os
 
+from buddy.control_plane.server_state import ServerState
+from buddy.control_plane.validation import validate_agent_id
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
-
-from buddy.control_plane.server_state import ServerState
-from buddy.control_plane.validation import validate_agent_id
 
 
 class ManagedAgentCreateRequest(BaseModel):
@@ -44,18 +43,15 @@ def build_agents_router(state: ServerState) -> APIRouter:
     router = APIRouter()
 
     @router.get("/agents")
-    @router.get("/api/v1/agents")
     async def list_agents() -> JSONResponse:
-        managed_entries = []
-        if state.managed_agent_manager is not None:
-            managed_records = await run_in_threadpool(state.managed_agent_manager.list_agents)
-            managed_entries = [state.build_managed_entry(record.agent_id, record.status) for record in managed_records]
+        managed_records = await run_in_threadpool(state.managed_agent_manager.list_agents)
+        managed_entries = [state.build_managed_entry(record.agent_id, record.status) for record in managed_records]
 
         external_records = await run_in_threadpool(state.external_agent_manager.list_agents)
         external_entries = [state.build_external_entry(record.agent_id) for record in external_records]
-        all_entries = [*state.agent_index, *managed_entries, *external_entries]
+        all_entries = [*managed_entries, *external_entries]
 
-        default_key = state.default_agent_key
+        default_key = None
         managed_default_key = next(
             (
                 entry["key"]
@@ -77,13 +73,11 @@ def build_agents_router(state: ServerState) -> APIRouter:
         })
 
     @router.get("/agents/external")
-    @router.get("/api/v1/agents/external")
     async def list_external_agents() -> JSONResponse:
         records = await run_in_threadpool(state.external_agent_manager.list_agents)
         return JSONResponse({"agents": [record.__dict__ for record in records]})
 
     @router.post("/agents/external")
-    @router.post("/api/v1/agents/external")
     async def create_external_agent(payload: ExternalAgentCreateRequest) -> JSONResponse:
         try:
             normalized_agent_id = validate_agent_id(payload.agent_id)
@@ -108,7 +102,6 @@ def build_agents_router(state: ServerState) -> APIRouter:
         )
 
     @router.put("/agents/external/{agent_id}")
-    @router.put("/api/v1/agents/external/{agent_id}")
     async def update_external_agent(agent_id: str, payload: ExternalAgentUpdateRequest) -> JSONResponse:
         try:
             normalized_agent_id = validate_agent_id(agent_id)
@@ -123,7 +116,6 @@ def build_agents_router(state: ServerState) -> APIRouter:
         return JSONResponse({"agent": record.__dict__})
 
     @router.delete("/agents/external/{agent_id}")
-    @router.delete("/api/v1/agents/external/{agent_id}")
     async def delete_external_agent(agent_id: str) -> JSONResponse:
         try:
             normalized_agent_id = validate_agent_id(agent_id)
@@ -133,18 +125,12 @@ def build_agents_router(state: ServerState) -> APIRouter:
         return JSONResponse({"ok": True})
 
     @router.get("/agents/managed")
-    @router.get("/api/v1/agents/managed")
     async def list_managed_agents() -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         agents_payload = await run_in_threadpool(state.managed_agent_manager.list_agents)
         return JSONResponse({"agents": [record.__dict__ for record in agents_payload]})
 
     @router.get("/agents/managed/{agent_id}")
-    @router.get("/api/v1/agents/managed/{agent_id}")
     async def get_managed_agent(agent_id: str) -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         normalized_agent_id = validate_agent_id(agent_id)
         record = await run_in_threadpool(state.managed_agent_manager.get_agent, normalized_agent_id)
         if record is None:
@@ -152,10 +138,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         return JSONResponse({"agent": record.__dict__})
 
     @router.get("/agents/managed/{agent_id}/config")
-    @router.get("/api/v1/agents/managed/{agent_id}/config")
     async def get_managed_agent_config(agent_id: str) -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
             normalized_agent_id = validate_agent_id(agent_id)
             config_yaml = await run_in_threadpool(state.managed_agent_manager.get_agent_config, normalized_agent_id)
@@ -164,10 +147,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         return JSONResponse({"configYaml": config_yaml})
 
     @router.put("/agents/managed/{agent_id}/config")
-    @router.put("/api/v1/agents/managed/{agent_id}/config")
     async def update_managed_agent_config(agent_id: str, payload: ManagedAgentConfigUpdateRequest) -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
             normalized_agent_id = validate_agent_id(agent_id)
             record = await run_in_threadpool(
@@ -183,10 +163,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         return JSONResponse({"agent": record.__dict__})
 
     @router.get("/agents/managed/{agent_id}/logs")
-    @router.get("/api/v1/agents/managed/{agent_id}/logs")
     async def get_managed_agent_logs(agent_id: str, tail: int = 200) -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
             normalized_agent_id = validate_agent_id(agent_id)
             record, logs = await run_in_threadpool(
@@ -203,10 +180,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         })
 
     @router.post("/agents/managed")
-    @router.post("/api/v1/agents/managed")
     async def create_managed_agent(payload: ManagedAgentCreateRequest) -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
             normalized_agent_id = validate_agent_id(payload.agent_id)
             record = await run_in_threadpool(
@@ -235,10 +209,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         )
 
     @router.post("/agents/managed/{agent_id}/start")
-    @router.post("/api/v1/agents/managed/{agent_id}/start")
     async def start_managed_agent(agent_id: str, payload: ManagedAgentStartRequest) -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
             normalized_agent_id = validate_agent_id(agent_id)
             record = await run_in_threadpool(
@@ -254,10 +225,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         return JSONResponse({"agent": record.__dict__})
 
     @router.post("/agents/managed/{agent_id}/stop")
-    @router.post("/api/v1/agents/managed/{agent_id}/stop")
     async def stop_managed_agent(agent_id: str) -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         try:
             normalized_agent_id = validate_agent_id(agent_id)
             record = await run_in_threadpool(state.managed_agent_manager.stop_agent, normalized_agent_id)
@@ -266,10 +234,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         return JSONResponse({"agent": record.__dict__})
 
     @router.delete("/agents/managed/{agent_id}")
-    @router.delete("/api/v1/agents/managed/{agent_id}")
     async def delete_managed_agent(agent_id: str, request: Request) -> JSONResponse:
-        if state.managed_agent_manager is None:
-            raise HTTPException(status_code=404, detail="Managed agents are disabled in runtime mode")
         remove_config = request.query_params.get("removeConfig") == "true"
         try:
             normalized_agent_id = validate_agent_id(agent_id)

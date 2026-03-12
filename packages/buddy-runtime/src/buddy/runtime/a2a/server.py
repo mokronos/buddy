@@ -5,15 +5,14 @@ from a2a.server.apps import A2AFastAPIApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard
+from buddy.environment.manager import EnvironmentManager
+from buddy.runtime.a2a.executor import PyAIAgentExecutor
+from buddy.session_store import SessionStore
 from devtools import pprint
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic_ai import Agent
 from starlette.concurrency import run_in_threadpool
-
-from buddy.runtime.a2a.executor import PyAIAgentExecutor
-from buddy.environment.manager import EnvironmentManager
-from buddy.session_store import SessionStore
 
 load_dotenv()
 

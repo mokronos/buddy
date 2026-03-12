@@ -1,5 +1,4 @@
 import pytest
-
 from buddy.shared.runtime_config import parse_runtime_agent_config_yaml
 
 

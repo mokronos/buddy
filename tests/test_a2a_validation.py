@@ -1,5 +1,4 @@
 import pytest
-
 from buddy.control_plane.validation import normalize_external_base_url, validate_agent_id
 
 

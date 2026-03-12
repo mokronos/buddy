@@ -10,9 +10,7 @@ class ServerState:
     base_url: str
     session_store: SessionStore
     external_agent_manager: ExternalAgentManager
-    managed_agent_manager: ManagedAgentManager | None
-    default_agent_key: str | None
-    agent_index: list[dict[str, str]]
+    managed_agent_manager: ManagedAgentManager
 
     def build_managed_entry(self, agent_id: str, status: str) -> dict[str, str]:
         mount_path = f"/a2a/managed/{agent_id}"

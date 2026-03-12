@@ -2,11 +2,6 @@ import os
 from time import sleep
 from typing import Any, NoReturn, cast
 
-from dotenv import load_dotenv
-from langfuse import Langfuse
-from pydantic_ai import Agent
-from pydantic_ai.toolsets import FunctionToolset
-
 from buddy.runtime.deps import AgentDeps
 from buddy.runtime.tools.environment import (
     environment_exec,
@@ -16,6 +11,10 @@ from buddy.runtime.tools.environment import (
 )
 from buddy.runtime.tools.todo import todoadd, tododelete, todoread, todoupdate
 from buddy.runtime.tools.web_search import fetch_web_page, web_search
+from dotenv import load_dotenv
+from langfuse import Langfuse
+from pydantic_ai import Agent
+from pydantic_ai.toolsets import FunctionToolset
 
 load_dotenv()
 

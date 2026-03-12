@@ -10,10 +10,9 @@ from time import sleep
 from uuid import uuid4
 
 import docker
+from buddy.environment.runtime import ExecResult
 from docker.errors import ImageNotFound, NotFound
 from docker.models.containers import Container
-
-from buddy.environment.runtime import ExecResult
 
 
 @dataclass

@@ -1,7 +1,6 @@
-from pydantic_ai import Agent
-
 from buddy.runtime.deps import AgentDeps
 from buddy.shared.runtime_config import RuntimeAgentConfig
+from pydantic_ai import Agent
 
 
 def build_runtime_agents(config: RuntimeAgentConfig) -> dict[str, Agent[AgentDeps, str]]:

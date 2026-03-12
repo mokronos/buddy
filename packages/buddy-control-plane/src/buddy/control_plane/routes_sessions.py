@@ -1,15 +1,13 @@
+from buddy.control_plane.server_state import ServerState
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
-
-from buddy.control_plane.server_state import ServerState
 
 
 def build_sessions_router(state: ServerState) -> APIRouter:
     router = APIRouter()
 
     @router.get("/sessions")
-    @router.get("/api/v1/sessions")
     async def list_sessions(request: Request) -> JSONResponse:
         limit_param = request.query_params.get("limit")
         limit = int(limit_param) if limit_param and limit_param.isdigit() else 20
@@ -17,7 +15,6 @@ def build_sessions_router(state: ServerState) -> APIRouter:
         return JSONResponse({"sessions": sessions})
 
     @router.get("/sessions/{session_id}")
-    @router.get("/api/v1/sessions/{session_id}")
     async def get_session(session_id: str) -> JSONResponse:
         if not session_id:
             raise HTTPException(status_code=400, detail="Missing session id")

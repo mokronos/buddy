@@ -1,7 +1,6 @@
 from uuid import uuid4
 
 from a2a.types import TaskState
-
 from buddy.session_store import SessionStore
 
 

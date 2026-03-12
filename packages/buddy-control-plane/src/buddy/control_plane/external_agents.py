@@ -104,7 +104,7 @@ class ExternalAgentManager:
                 loaded[agent_id] = ExternalAgentRecord(
                     agent_id=str(record_data.get("agent_id", agent_id)),
                     base_url=str(record_data["base_url"]),
-                    use_legacy_card_path=bool(record_data.get("use_legacy_card_path", False)),
+                    use_legacy_card_path=bool(record_data["use_legacy_card_path"]),
                     created_at=str(record_data["created_at"]),
                     updated_at=str(record_data["updated_at"]),
                 )

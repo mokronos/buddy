@@ -8,10 +8,8 @@ from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState
 from a2a.utils import new_agent_text_message, new_task
-from buddy.environment.runtime import EnvironmentRuntime
 from buddy.runtime.a2a.event_writer import SessionEventWriter
 from buddy.runtime.a2a.utils import simple_data_part, simple_text_part
-from buddy.runtime.deps import AgentDeps
 from buddy.session_store import SessionStore
 from devtools import pprint
 from langfuse import get_client
@@ -36,32 +34,9 @@ class PyAIAgentExecutor(AgentExecutor):
         self,
         agent: Agent,
         session_store: SessionStore,
-        environment_manager: EnvironmentRuntime,
     ) -> None:
         self.agent = agent
         self.session_store = session_store
-        self.environment_manager = environment_manager
-
-    def _environment_owner_id(self, context_id: str) -> str:
-        owner_from_context = self._owner_name_from_context(context_id)
-        if owner_from_context is not None:
-            return f"{owner_from_context}:{context_id}"
-
-        raw_name = self.agent.name or "agent"
-        safe_name = "".join(ch.lower() if ch.isalnum() else "-" for ch in raw_name).strip("-") or "agent"
-        return f"{safe_name}:{context_id}"
-
-    def _owner_name_from_context(self, context_id: str) -> str | None:
-        prefix = "agent-"
-        separator = "--"
-        if not context_id.startswith(prefix):
-            return None
-        if separator not in context_id:
-            return None
-        candidate = context_id.split(separator, 1)[0]
-        if len(candidate) <= len(prefix):
-            return None
-        return candidate
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         query = context.get_user_input()
@@ -110,17 +85,11 @@ class PyAIAgentExecutor(AgentExecutor):
 
             async def run_agent():
                 async with send_stream:
-                    deps = AgentDeps(
-                        session_id=context_id,
-                        environment_owner_id=self._environment_owner_id(context_id),
-                        environment_manager=self.environment_manager,
-                    )
                     agent_with_deps = cast(Any, self.agent)
                     return await agent_with_deps.run(
                         query,
                         message_history=msg_history,
                         event_stream_handler=event_stream_handler,
-                        deps=deps,
                     )
 
             run_task = asyncio.create_task(run_agent())

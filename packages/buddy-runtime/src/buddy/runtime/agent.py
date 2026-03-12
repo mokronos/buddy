@@ -2,13 +2,6 @@ import os
 from time import sleep
 from typing import Any, NoReturn, cast
 
-from buddy.runtime.deps import AgentDeps
-from buddy.runtime.tools.environment import (
-    environment_exec,
-    environment_patch_file,
-    environment_read_file,
-    environment_write_file,
-)
 from buddy.runtime.tools.todo import todoadd, tododelete, todoread, todoupdate
 from buddy.runtime.tools.web_search import fetch_web_page, web_search
 from dotenv import load_dotenv
@@ -76,15 +69,6 @@ todo_tools = FunctionToolset(
     ],
 )
 
-environment_tools = FunctionToolset(
-    tools=[
-        environment_exec,
-        environment_read_file,
-        environment_write_file,
-        environment_patch_file,
-    ]
-)
-
 
 def create_agent(
     name: str,
@@ -93,29 +77,16 @@ def create_agent(
     model: str = "openrouter:openrouter/free",
     enable_web_search: bool = True,
     enable_todo: bool = True,
-    enable_environment: bool = True,
-) -> Agent[AgentDeps, str]:
-    if enable_web_search and enable_todo and enable_environment:
-        toolsets = [web_tools, todo_tools, environment_tools]
-    elif enable_web_search and enable_todo:
-        toolsets = [web_tools, todo_tools]
-    elif enable_web_search and enable_environment:
-        toolsets = [web_tools, environment_tools]
-    elif enable_todo and enable_environment:
-        toolsets = [todo_tools, environment_tools]
-    elif enable_web_search:
-        toolsets = [web_tools]
-    elif enable_todo:
-        toolsets = [todo_tools]
-    elif enable_environment:
-        toolsets = [environment_tools]
-    else:
-        toolsets = []
+) -> Agent[None, str]:
+    toolsets = []
+    if enable_web_search:
+        toolsets.append(web_tools)
+    if enable_todo:
+        toolsets.append(todo_tools)
 
     return Agent(
         model=model,
         name=name,
-        deps_type=AgentDeps,
         instructions=instructions,
         retries=5,
         # model="google-gla:gemini-2.5-flash",

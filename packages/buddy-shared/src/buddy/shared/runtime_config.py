@@ -20,20 +20,11 @@ class A2ASection(BaseModel):
     mount_path: str = Field(default="/a2a", min_length=1)
 
 
-class ToolEnvironmentSection(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = True
-    image: str | None = None
-    warm_containers: int | None = Field(default=None, ge=0)
-
-
 class ToolsSection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     web_search: bool = True
     todo: bool = True
-    environment: bool | ToolEnvironmentSection = True
 
 
 class RuntimeAgentConfig(BaseModel):
@@ -42,12 +33,6 @@ class RuntimeAgentConfig(BaseModel):
     agent: AgentSection
     a2a: A2ASection = Field(default_factory=A2ASection)
     tools: ToolsSection = Field(default_factory=ToolsSection)
-
-    def environment_enabled(self) -> bool:
-        environment = self.tools.environment
-        if isinstance(environment, bool):
-            return environment
-        return environment.enabled
 
 
 def parse_runtime_agent_config_yaml(config_yaml: str) -> RuntimeAgentConfig:

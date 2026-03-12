@@ -18,7 +18,6 @@ The agent runtime image is built once and reused. New agents are created by star
    - Runs the reusable `buddy-agent-runtime` image.
    - Hosts LLM agent logic + A2A endpoint(s).
    - Reads agent-specific config from mounted YAML.
-   - Optionally owns an internal warm environment pool for tool execution.
 
 3. **UI (`app/`)**
    - Talks only to Buddy control plane.
@@ -55,10 +54,6 @@ a2a:
 tools:
   web_search: true
   todo: true
-  environment:
-    enabled: true
-    image: environ:latest
-    warm_containers: 1
 ```
 
 ## Control Plane Responsibilities

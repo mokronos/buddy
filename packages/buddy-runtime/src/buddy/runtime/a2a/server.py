@@ -5,14 +5,12 @@ from a2a.server.apps import A2AFastAPIApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard
-from buddy.environment.manager import EnvironmentManager
 from buddy.runtime.a2a.executor import PyAIAgentExecutor
 from buddy.session_store import SessionStore
 from devtools import pprint
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic_ai import Agent
-from starlette.concurrency import run_in_threadpool
 
 load_dotenv()
 
@@ -47,13 +45,11 @@ def _create_a2a_runtime_app(
     agent: Agent,
     card_name: str,
     card_url: str,
-    environment_manager: EnvironmentManager,
 ) -> FastAPI:
     request_handler = DefaultRequestHandler(
         agent_executor=PyAIAgentExecutor(
             agent=agent,
             session_store=session_store,
-            environment_manager=environment_manager,
         ),
         task_store=InMemoryTaskStore(),
     )
@@ -75,26 +71,12 @@ def create_runtime_app(agents: dict[str, Agent]) -> FastAPI:
 
     agent_key = next(iter(agents.keys()))
     agent = agents[agent_key]
-    environment_manager = EnvironmentManager(
-        image_ref=os.environ.get("BUDDY_ENV_IMAGE", "environ:latest"),
-        warm_containers=max(0, int(os.environ.get("BUDDY_ENV_WARM_CONTAINERS", "0"))),
-    )
     card_name = agent.name or f"buddy-{agent_key}"
 
     app = _create_a2a_runtime_app(
         agent=agent,
         card_name=card_name,
         card_url=base_url,
-        environment_manager=environment_manager,
     )
-
-    @app.on_event("startup")
-    async def _startup() -> None:
-        if environment_manager.warm_containers > 0:
-            await run_in_threadpool(environment_manager.start)
-
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:
-        await run_in_threadpool(environment_manager.stop)
 
     return app

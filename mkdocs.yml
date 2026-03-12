@@ -9,7 +9,14 @@ copyright: Maintained by <a href="https://mokronos.com">mokronos</a>.
 
 nav:
   - Home: index.md
+  - Server: server.md
+  - A2A Architecture: a2a-architecture.md
+  - Agent Containers: agent-container-architecture.md
   - Modules: modules.md
+  - Plan: plan.md
+  - Ideas: idea.md
+  - Legacy TUI: tui.md
+  - Open TODOs: todo.md
 plugins:
   - search
   - mkdocstrings:

@@ -1,32 +1,40 @@
-# SolidStart
+# Buddy Web App (`app/`)
 
-Everything you need to build a Solid project, powered by [`solid-start`](https://start.solidjs.com);
+SolidStart frontend for Buddy.
 
-## Creating a project
+## What it does
+
+- Chat UI for A2A agents (`/`)
+- Managed/external agent administration (`/managed-agents`)
+- Live managed-agent logs (`/agent-logs`)
+
+The app talks to the Buddy control plane and does not call managed Docker runtimes directly.
+
+## Requirements
+
+- Node.js `>=22`
+- `bun` package manager/runtime
+
+## Install and run
 
 ```bash
-# create a new project in the current directory
-npm init solid@latest
-
-# create a new project in my-app
-npm init solid@latest my-app
+bun install
+bun run dev
 ```
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Build and run production bundle:
 
 ```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+bun run build
+bun run start
 ```
 
-## Building
+## Configuration
 
-Solid apps are built with _presets_, which optimise your project for deployment to different environments.
+- `VITE_A2A_BASE_URL` (optional): base URL of Buddy control plane.
+  - default: `http://localhost:10001`
 
-By default, `npm run build` will generate a Node app that you can run with `npm start`. To use a different preset, add it to the `devDependencies` in `package.json` and specify in your `app.config.js`.
+## Notes
 
-## This project was created with the [Solid CLI](https://github.com/solidjs-community/solid-cli)
+- Generated OpenAPI client code is in `src/buddy-client/`.
+- API wrappers used by the UI live in `src/a2a/`.

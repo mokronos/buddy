@@ -1,27 +1,27 @@
-# Big Idea
+# Big Ideas (Future)
 
-## Independent A2A Agents
+These are forward-looking concepts, not guarantees of current behavior.
 
-- Each agent is a separate process or docker container
-- Can easily create new agents via a dashboard
-- PydanticAI with A2A Executor
+## Independent A2A agents
 
-## Communication between Agents
+- Continue scaling the current model where each managed agent is an isolated runtime container.
+- Keep agent creation/configuration in the control-plane dashboard.
+- Maintain protocol boundary through A2A proxy routes.
 
-- Keep as human as possible
-- Each agent has a communication tool
-    - can send an async task to another agent (which it is allowed to)
-    - can check status of task
-- Agents could communicate in chats as well, e.g. discord channels
-    - each agent has discord tool and is a separate bot
+## Agent-to-agent collaboration
 
-## Dashboard
+- Add explicit tools for one agent to delegate tasks to another agent.
+- Track delegated task state and permissions in control plane.
+- Define policy boundaries for which agents can communicate.
 
-- See all active agents
-- See which agent can communicate with which other agents
-- Change communication permissions (via central db)
-- Chat with any agent
-- Be able to define triggers, which agents should react to
-    - Email (can have their own email address)
-    - Discord (can have their own discord account/bot)
-    - Time based e.g. cron job
+## Trigger-driven automation
+
+- Add trigger sources (time-based, webhook, email, chat integrations).
+- Route trigger events to selected agents through the same execution pipeline.
+- Record trigger execution in session/event history for auditability.
+
+## Operator dashboard enhancements
+
+- Visualize active agents, health, and workload.
+- Visualize allowed communication graph between agents.
+- Add policy controls and approvals for high-impact actions.

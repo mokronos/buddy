@@ -1,59 +1,37 @@
-# Buddy roadmap
+# Buddy Roadmap
 
-## Goal
+This roadmap tracks current implementation status and near-term priorities.
 
-Build a JARVIS-like assistant that can execute tasks autonomously, evolve its prompt/skills over time, and expose a clean client/server interface for multiple clients.
+## Implemented foundation
 
-## Architecture decisions
+- [x] Server/client architecture with package split:
+  - `buddy-control-plane`
+  - `buddy-runtime`
+  - `buddy-shared`
+- [x] Control-plane APIs for agents and sessions
+- [x] Managed-agent container lifecycle (create/start/stop/delete)
+- [x] External-agent registry and proxying
+- [x] A2A proxy boundary for managed and external agents
+- [x] SQLite-backed session/event/message/todo persistence
+- [x] CLI commands for server/dev/chat/ask
+- [x] Web client with chat, managed-agents admin, and agent logs pages
 
-- [ ] Use a server/client architecture
-- [ ] Server hosts a single A2A endpoint for direct agent interaction
-- [ ] Server exposes additional endpoints for session management and client needs
-- [ ] First client is a CLI client that talks to the server
-- [ ] Local core tools live in the main app
-- [ ] MCP tools live in a dedicated module
-- [ ] Use JSON files for all storage (debuggable + simple)
-- [ ] TypeScript execution allowed with broad permissions
+## In progress / active focus
 
-## Core tools (local)
+- [ ] Improve frontend session history/replay UX using existing `/sessions` APIs
+- [ ] Tighten OpenAPI-driven frontend API usage (reduce handwritten wrappers)
+- [ ] Improve runtime tool catalog and expose only production-ready tools by default
+- [ ] Expand observability around runtime execution and proxy behavior
 
-- [ ] Planner / notetaking tool (JSON CRUD)
-- [ ] Settings manager (get/set key/value pairs in JSON)
-- [ ] Local file search/viewer
-- [ ] CLI executor tool
-- [ ] Web search and fetch tools (SearXNG + fetch)
-- [ ] Code interpreter / TS REPL tool (Deno with broad permissions)
+## Next priorities
 
-## MCP tools module
+- [ ] Add stronger integration tests across control-plane proxy + runtime streaming
+- [ ] Improve external-agent auth and connection configuration
+- [ ] Formalize compatibility guarantees for control-plane API responses
+- [ ] Add clearer deployment docs for control plane + runtime image
 
-- [ ] MCP registry stored in JSON
-- [ ] Install/register MCP servers
-- [ ] Enable/disable MCP servers per session
-- [ ] Expose MCP tools to the agent dynamically
+## Longer-term ideas
 
-## Context and memory
-
-- [ ] Context manager for message history
-- [ ] History persistence in JSON
-- [ ] History trimming/summarization strategy
-- [ ] Session storage keyed by context id
-
-## Reflexion / self-improvement
-
-- [ ] Post-run reflection step
-- [ ] Store learned behaviors/skills in JSON
-- [ ] Optional system prompt updates based on reflection
-
-## Client/server endpoints
-
-- [ ] A2A endpoint for agent interaction
-- [ ] Session create/list/delete endpoints
-- [ ] Session history fetch/append endpoints
-- [ ] Endpoint(s) for tool inventory and status
-
-## CLI client (first client)
-
-- [ ] Connects to server A2A endpoint
-- [ ] Manages sessions (create/select)
-- [ ] Streams responses and tool events
-- [ ] Simple config for server URL
+- [ ] Multi-agent orchestration workflows with explicit inter-agent task handoff
+- [ ] Richer session branching/forking UI and replay controls
+- [ ] Policy/approval controls for high-impact tools

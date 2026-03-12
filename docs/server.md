@@ -1,45 +1,75 @@
 # Server
-Control-plane endpoints and A2A proxy behavior.
 
----
+Control-plane APIs and A2A proxy behavior.
+
 ## Overview
-Buddy runs a FastAPI control plane. It exposes domain-style APIs for the UI and proxies raw A2A traffic at the agent boundary.
 
-- Domain APIs are available under `/sessions` and `/agents`.
-- A2A endpoints are exposed via managed/external agent proxies.
+Buddy runs a FastAPI control plane (`packages/buddy-control-plane/src/buddy/control_plane/server.py`) with three route modules:
 
-Session history, events, and chat messages persist in `sessions.db`.
+- `routes/sessions.py`
+- `routes/agents.py`
+- `routes/proxy.py`
 
----
-## Domain API
-Main control-plane APIs:
+The control plane owns:
+
+- managed-agent lifecycle (Docker)
+- external-agent registry
+- session read APIs
+- A2A proxying for managed/external agents
+
+## Domain API surface
+
+Session endpoints:
 
 - `GET /sessions`
 - `GET /sessions/{session_id}`
+
+Agent index:
+
 - `GET /agents`
+
+Managed agent endpoints:
+
 - `GET /agents/managed`
+- `GET /agents/managed/{agent_id}`
 - `POST /agents/managed`
+- `POST /agents/managed/{agent_id}/start`
+- `POST /agents/managed/{agent_id}/stop`
+- `DELETE /agents/managed/{agent_id}`
 - `GET /agents/managed/{agent_id}/config`
 - `PUT /agents/managed/{agent_id}/config`
+- `GET /agents/managed/{agent_id}/logs`
+
+External agent endpoints:
+
 - `GET /agents/external`
 - `POST /agents/external`
+- `PUT /agents/external/{agent_id}`
+- `DELETE /agents/external/{agent_id}`
 
-Managed-agent config is YAML and is validated before create/update.
+## A2A boundary
 
----
-## A2A Boundary
-Raw A2A JSON-RPC/SSE stays at the agent boundary:
+Raw A2A JSON-RPC/SSE is proxied at:
 
-- Managed container proxies: `/a2a/managed/{agent_id}`
-- External agent proxies: `/a2a/external/{agent_id}`
+- `/a2a/managed/{agent_id}` (and nested paths)
+- `/a2a/external/{agent_id}` (and nested paths)
 
-Agent-card requests are rewritten so `url` points at the control-plane proxy URL.
+Agent-card payloads are rewritten so `url` points to the control-plane proxy route.
 
----
-## Security Defaults
-- External agent URLs are validated (http/https only, no credentials/query/fragment).
+## Persistence and data locations
 
----
-## Configure
-- `BUDDY_PUBLIC_URL` controls advertised/proxy base URLs.
-- `BUDDY_ALLOW_PRIVATE_EXTERNAL_URLS` controls whether private/loopback external URLs are allowed.
+- SQLite session DB: `sessions.db` (resolved under Buddy data dir when relative)
+- Managed-agent registry: `<buddy_data_dir>/managed_agents.json`
+- External-agent registry: `<buddy_data_dir>/external_agents.json`
+- Managed-agent YAML config files: `<buddy_data_dir>/agents/{agent_id}/agent.yaml`
+
+Default Buddy data dir is `~/.local/share/buddy` and can be overridden via `BUDDY_DATA_DIR` or `XDG_DATA_HOME`.
+
+## Key environment variables
+
+- `BUDDY_PUBLIC_URL`: advertised base URL used in proxy/card URLs
+- `BUDDY_ALLOW_PRIVATE_EXTERNAL_URLS`: allow/disallow private/loopback external agent URLs
+- `BUDDY_MANAGED_AGENT_AUTO_START_ALL`: auto-start managed agents on control-plane startup
+- `BUDDY_A2A_PROXY_CONNECT_TIMEOUT_S`
+- `BUDDY_A2A_PROXY_WRITE_TIMEOUT_S`
+- `BUDDY_A2A_PROXY_POOL_TIMEOUT_S`

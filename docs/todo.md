@@ -1,16 +1,16 @@
-- Yes, that is cleaner.
-     - The main reason we still rewrite card url is that the A2A JS SDK client construction path follows the card’s url
-     as transport endpoint.
-     - If card url points to external host, SDK may bypass Buddy proxy. So we currently rewrite it to keep traffic
-     through Buddy.
-     - If we refactor frontend/client bootstrap to pin endpoint to registry mountPath regardless of card url, we can
-     remove that hack.
+# Open TODOs
 
-     So the cleaner target design is:
+## Proxy/card behavior
 
-     1. Buddy registry stores canonical proxy route per agent (/a2a/<kind>/<id>).
-     2. Frontend always uses registry route as transport endpoint.
-     3. Card is treated as metadata, not routing authority.
-     4. Proxy forwards without card-url rewriting (or only for compatibility mode).
+- Keep evaluating whether card URL rewriting can be removed.
+- Current behavior rewrites card `url` so JS A2A clients keep routing through Buddy proxy paths.
+- Cleaner long-term target:
+  1. Registry is authoritative transport route (`/a2a/{kind}/{id}`).
+  2. Frontend pins transport to registry route.
+  3. Agent cards are metadata, not routing authority.
+  4. Proxy can pass card payloads through unchanged (or only rewrite in compatibility mode).
 
-     In short: your proposed model is right; current behavior is partly transitional compatibility glue.
+## Documentation hygiene
+
+- Keep docs aligned with package-based layout under `packages/`.
+- Update docs whenever route/module moves occur (for example route files under `control_plane/routes/`).

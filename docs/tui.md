@@ -1,18 +1,12 @@
-# TUI
-Terminal client for streaming Buddy sessions.
+# Legacy TUI Note
 
----
-## Start
-Launch the server with `uv run buddy server` and the UI with `bun dev`. Use `TUI_SERVER_URL` (pointing at `/a2a`) when the server is not on localhost.
+Legacy TUIs are not an active development target in this repository.
 
----
-## Connect
-The UI expects the A2A base URL, defaulting to `http://localhost:10001/a2a`. It fetches the agent card and streams messages through the SSE channel.
+Current client surfaces are:
 
----
-## Replay
-Use `/sessions` to open the session picker. The UI reloads stored messages and replays saved events to rebuild the streaming output.
+- CLI commands in `src/buddy/cli.py`
+  - `uv run buddy chat`
+  - `uv run buddy ask "..."`
+- Web app in `app/`
 
----
-## Inspect
-Status panel tracks connection state, agent name, task id, and context id. Errors from fetch or streaming show up inline.
+If terminal interaction is needed, use the CLI commands above against the control-plane A2A endpoint.

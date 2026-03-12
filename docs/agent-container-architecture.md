@@ -2,43 +2,42 @@
 
 ## Goal
 
-Run each agent as its own Docker container (agent runtime + A2A wrapper), while keeping one central Buddy server that orchestrates agent containers and serves the UI.
+Run each managed agent as its own Docker container while keeping one central control plane for orchestration, proxying, and client-facing APIs.
 
-The agent runtime image is built once and reused. New agents are created by starting containers with different config files, not by rebuilding images.
+The runtime image is reusable: new agents are created by writing a config file and launching another container from the same image.
 
-## High-Level Components
+## Components
 
-1. **Buddy Control Plane (main server)**
-   - Owns agent lifecycle (create, start, stop, delete).
-   - Starts one container per agent using Docker API.
-   - Tracks metadata (agent id, container id, status, URL, config path).
-   - Exposes APIs for UI and forwards/aggregates agent discovery.
+1. **Buddy control plane** (`packages/buddy-control-plane`)
+   - Owns managed/external agent registries.
+   - Starts/stops/deletes managed runtime containers.
+   - Exposes `/agents` and `/sessions` APIs.
+   - Proxies A2A traffic for managed and external agents.
 
-2. **Agent Runtime Container (one per agent)**
-   - Runs the reusable `buddy-agent-runtime` image.
-   - Hosts LLM agent logic + A2A endpoint(s).
-   - Reads agent-specific config from mounted YAML.
+2. **Runtime container** (`packages/buddy-runtime`)
+   - Boots from `BUDDY_AGENT_CONFIG` YAML.
+   - Builds a `pydantic_ai.Agent`.
+   - Serves A2A endpoints and streams events.
 
-3. **UI (`app/`)**
-   - Talks only to Buddy control plane.
-   - Lists available agents and status.
-   - Creates agents from templates/config.
-   - Sends chats/tasks to selected agent through control plane routing.
+3. **Web client** (`app/`)
+   - Talks to control-plane APIs only.
+   - Creates/updates managed and external agents.
+   - Streams chat events through control-plane proxy routes.
 
-## Runtime Model
+## Runtime model
 
-### Build once, configure at runtime
+### Build once, configure per container
 
-- Build image: `buddy-agent-runtime:<version>`.
-- For each new agent:
-  - Generate/store config file, e.g. `data/agents/<agent-id>/agent.yaml`.
-  - Start container from the same image.
-  - Mount config read-only into container (for example: `/etc/buddy/agent.yaml`).
-  - Set env var like `BUDDY_AGENT_CONFIG=/etc/buddy/agent.yaml`.
+- Build image: `buddy-agent-runtime:latest`.
+- For each managed agent, control plane:
+  - validates runtime YAML,
+  - writes config to `<buddy_data_dir>/agents/{agent_id}/agent.yaml`,
+  - starts container with config mounted read-only,
+  - sets `BUDDY_AGENT_CONFIG` to the mount path.
 
-No image rebuild is needed for new prompts/tools/model settings.
+No runtime image rebuild is required for per-agent prompt/model/tool changes.
 
-### Config example (YAML)
+### Runtime config shape
 
 ```yaml
 agent:
@@ -54,80 +53,64 @@ a2a:
 tools:
   web_search: true
   todo: true
+
+mcp:
+  enabled: true
+  url: http://127.0.0.1:18001/mcp
 ```
 
-## Control Plane Responsibilities
+## Control-plane behavior
 
-1. **Agent Create**
-   - Validate requested config.
-   - Persist config + agent record.
-   - Launch container with mounted config and labels (e.g. `buddy.agent.id=<id>`).
-   - Health-check container A2A endpoint.
-   - Register as active.
+### Managed agents
 
-2. **Agent Discovery**
-   - Maintain `/agents` index with state and A2A card URL.
-   - UI reads this index; no direct Docker access from UI.
+- Registry stored in `<buddy_data_dir>/managed_agents.json`.
+- Lifecycle APIs in `routes/agents.py`:
+  - create/list/get/start/stop/delete
+  - get/update runtime YAML config
+  - fetch logs
+- Reconcile with Docker metadata on startup.
+- Optional auto-start on startup via `BUDDY_MANAGED_AGENT_AUTO_START_ALL`.
 
-3. **Routing**
-   - Either:
-     - proxy requests (`/a2a/<id> -> container`), or
-     - return direct endpoint to UI if network policy allows.
-   - Prefer proxy first for simpler auth/CORS and stable URLs.
+### External agents
 
-4. **Lifecycle + Recovery**
-   - Restart policies.
-   - Reconcile loop (detect dead containers, update status, optional restart).
-   - Clean stop/delete APIs.
+- Registry stored in `<buddy_data_dir>/external_agents.json`.
+- CRUD APIs in `routes/agents.py`.
+- Base URLs are normalized/validated before persistence.
 
-## UI Flow
+### Proxy routing
 
-1. User opens UI.
-2. UI calls control plane `/agents`.
-3. User creates or selects an agent.
-4. UI sends prompt/task via control plane.
-5. Control plane routes to agent container A2A endpoint.
-6. Streaming/events flow back to UI.
+- Managed proxy root: `/a2a/managed/{agent_id}`
+- External proxy root: `/a2a/external/{agent_id}`
+- Agent-card responses are rewritten to point `url` at control-plane proxy routes.
 
-## Current Code Layout
+## Current code layout
 
-The current repository structure that implements this architecture:
+```text
+packages/
+  buddy-control-plane/src/buddy/control_plane/
+    server.py
+    routes/
+      agents.py
+      sessions.py
+      proxy.py
+    managed_agents.py
+    external_agents.py
 
-```
-src/buddy/
-├── control_plane/
-│   ├── server.py            # FastAPI app composition + startup/shutdown
-│   ├── routes_agents.py     # Managed/external agent CRUD endpoints
-│   ├── routes_proxy.py      # A2A proxy routes for managed/external agents
-│   ├── managed_agents.py    # Docker-backed managed agent lifecycle
-│   └── external_agents.py   # External agent registry
-├── runtime/
-│   ├── main.py              # Runtime container entrypoint
-│   ├── config.py            # Build runtime agent from YAML config
-│   ├── agent.py             # Agent + tools wiring
-│   └── a2a/server.py        # A2A server and agent-card setup
-└── shared/runtime_config.py # Shared YAML schema validation
+  buddy-runtime/src/buddy/runtime/
+    main.py
+    config.py
+    agent.py
+    a2a/server.py
 
-app/src/                     # SolidStart client talking to control plane APIs
+  buddy-shared/src/buddy/
+    shared/runtime_config.py
+    session_store.py
+    data_dirs.py
 ```
 
-## Suggested Phased Rollout
+## Why this architecture works
 
-1. **Phase 1: Single runtime image + YAML config mount**
-   - Manual create/start/stop APIs.
-   - Proxy A2A through control plane.
-
-2. **Phase 2: Persistent registry + reconciliation**
-   - Recover agents after server restart.
-   - Health status in `/agents`.
-
-3. **Phase 3: Templates + scaling controls**
-   - Config templates for common agent types.
-   - Resource limits/quotas per agent container.
-
-## Why this matches your goal
-
-- New agent instances come from the same prebuilt runtime image.
-- Per-agent behavior comes from mounted YAML (or env), not rebuilds.
-- Main server remains the orchestrator and UI backend.
-- Architecture stays aligned with server/client + A2A direction.
+- Single orchestrator for all clients and all agent endpoints.
+- Stable proxy URLs regardless of container IP/port churn.
+- Reproducible per-agent behavior through explicit YAML config.
+- Clear split between lifecycle management (control plane) and execution (runtime).

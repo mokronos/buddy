@@ -1,72 +1,87 @@
 # buddy
 
-Personal AI assistant.
+Buddy is an autonomous assistant platform with a control-plane server, containerized agent runtimes, and multiple clients (CLI + web UI).
 
-# Repository Overview
+## What is in this repository
 
-This repository offers a personal ai assistant.
+- `packages/buddy-control-plane`: FastAPI control plane for agent management, session APIs, and A2A proxying.
+- `packages/buddy-runtime`: Reusable runtime that loads YAML config, builds a `pydantic_ai.Agent`, and serves A2A.
+- `packages/buddy-shared`: Shared runtime config schema, logging helpers, data-dir helpers, and SQLite `SessionStore`.
+- `app/`: SolidStart frontend for chat, managed/external agent admin, and agent logs.
+- `src/buddy/cli.py`: CLI commands (`buddy server`, `buddy dev`, `buddy chat`, `buddy ask`).
 
-# Purpose
+## Current architecture
 
-The primary goal is to build a JARVIS-like assistant that not only performs diverse tasks but also has the ability to:
+- Control plane exposes domain endpoints under `/agents` and `/sessions`.
+- A2A traffic stays at the boundary and is proxied through:
+  - `/a2a/managed/{agent_id}`
+  - `/a2a/external/{agent_id}`
+- Managed agents run as Docker containers from one reusable runtime image (`buddy-agent-runtime`).
+- External agents are registered by base URL and proxied by the control plane.
+- Sessions, messages, events, and todo state persist in SQLite via `SessionStore`.
 
-- Adjust its own system prompt dynamically.
-- Learn new behaviors and create reusable tools or behaviors for future use.
+## Quick start
 
-This design enables continuous learning and improvement, making the assistant more effective and personalized with use.
+### 1) Install dependencies
 
-# Tools
-
-- **Planner / Notetaking Application:** Helps organize tasks and thoughts efficiently.
-- **Model Context Protocol (MCP) Installer/Manager:** Manages and installs MCP servers, and adds them to the model context
-- **Code Interpreter / Typescript REPL:** Allows execution of code for accessing/managing local files or accessing api's.
-- **Settings Manager:** Manages the settings of the System itself.
-    - get/set key/value pairs
-- **Web Search:** Allows searching the web for information.
-    - web_search: just searching (with summaries)
-    - web_fetch: fetching full pages
-
-# Potential Code tool execution
-
-- All tools should be available as ts packages
-    - model can just write code with them
-    - e.g. fetch page --> parse with code --> console.log result --> read it
-- typescript instead of python
-- load docs/definitions dynamically
-
-# Important Components
-
-- Context Manager: Manages the context of the LLM, including the message history (system message, user messages, tool messages), and tools.
-- Reflexion: Model should reflect on its last x actions and feedback from user and adjust its prompt and skills accordingly. Could also include writing a new tool/skill.
-
-# Getting Started
-
-To run the server:
-
+```bash
+uv sync
 ```
+
+### 2) Run the control plane
+
+```bash
 uv run buddy server
 ```
 
-To run the server with hot reload:
+For auto-reload:
 
-```
+```bash
 uv run buddy dev
 ```
 
-To connect with the CLI client:
+### 3) Run the web client
 
+```bash
+cd app
+bun install
+bun run dev
 ```
+
+### 4) Use the CLI client
+
+```bash
 uv run buddy chat
+# or
+uv run buddy ask "hello"
 ```
 
-# TypeScript Client SDK
+## Agent runtime container
 
-To generate the TypeScript client SDK from the OpenAPI spec:
+Build the reusable runtime image:
 
+```bash
+docker build -f Dockerfile.agent-runtime -t buddy-agent-runtime:latest .
 ```
+
+Managed-agent creation in the control plane expects this image tag by default.
+
+## Data and configuration
+
+- Default Buddy data directory: `~/.local/share/buddy`
+- Override with:
+  - `BUDDY_DATA_DIR`
+  - `XDG_DATA_HOME`
+- Useful server/runtime env vars:
+  - `BUDDY_PUBLIC_URL`
+  - `BUDDY_ALLOW_PRIVATE_EXTERNAL_URLS`
+  - `BUDDY_AGENT_CONFIG` (required inside runtime container)
+  - `BUDDY_REQUIRE_LANGFUSE`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`
+
+## Frontend OpenAPI client generation
+
+Generated client code lives in `app/src/buddy-client` and is configured by `openapi-ts.config.ts`.
+
+```bash
 bunx openapi-ts
 ```
-
-This will generate the client in `app/src/buddy-client` based on the OpenAPI spec at `http://localhost:10001/openapi.json`.
-
-Make sure the server is running on port 10001 before generating the SDK.

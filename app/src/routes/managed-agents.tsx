@@ -31,6 +31,22 @@ a2a:
   port: 8000
 `;
 
+type FeedbackState =
+  | {
+      kind: "error" | "success";
+      message: string;
+    }
+  | null;
+
+function FeedbackAlert(props: { feedback: FeedbackState; class?: string }) {
+  if (!props.feedback) {
+    return null;
+  }
+
+  const alertClass = props.feedback.kind === "error" ? "alert-error" : "alert-success";
+  return <p class={`alert ${alertClass} text-sm ${props.class ?? ""}`}>{props.feedback.message}</p>;
+}
+
 function syncAgentIdInConfig(configYaml: string, agentId: string): string {
   const lines = configYaml.split(/\r?\n/);
   let inAgentSection = false;
@@ -79,8 +95,12 @@ export default function ManagedAgentsPage() {
     throwOnError: false,
   }));
 
-  const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
-  const [actionMessage, setActionMessage] = createSignal<string | null>(null);
+  const [managedCreateFeedback, setManagedCreateFeedback] = createSignal<FeedbackState>(null);
+  const [managedListFeedback, setManagedListFeedback] = createSignal<FeedbackState>(null);
+  const [managedEditFeedback, setManagedEditFeedback] = createSignal<FeedbackState>(null);
+  const [externalCreateFeedback, setExternalCreateFeedback] = createSignal<FeedbackState>(null);
+  const [externalListFeedback, setExternalListFeedback] = createSignal<FeedbackState>(null);
+  const [externalEditFeedback, setExternalEditFeedback] = createSignal<FeedbackState>(null);
 
   const [agentId, setAgentId] = createSignal("");
   const [image, setImage] = createSignal("buddy-agent-runtime:latest");
@@ -144,7 +164,22 @@ export default function ManagedAgentsPage() {
   const externalAgents = () => externalAgentsQuery.data ?? [];
   const visibleManagedAgents = () => (isClientReady() ? managedAgents() : []);
   const visibleExternalAgents = () => (isClientReady() ? externalAgents() : []);
-  const queryErrorMessage = () => null;
+  const managedQueryErrorMessage = () =>
+    managedAgentsQuery.error instanceof Error ? managedAgentsQuery.error.message : null;
+  const externalQueryErrorMessage = () =>
+    externalAgentsQuery.error instanceof Error ? externalAgentsQuery.error.message : null;
+
+  const clearManagedFeedback = (): void => {
+    setManagedCreateFeedback(null);
+    setManagedListFeedback(null);
+    setManagedEditFeedback(null);
+  };
+
+  const clearExternalFeedback = (): void => {
+    setExternalCreateFeedback(null);
+    setExternalListFeedback(null);
+    setExternalEditFeedback(null);
+  };
 
   const waitForManagedAgentRemoval = async (managedAgentId: string): Promise<boolean> => {
     const maxAttempts = 20;
@@ -161,18 +196,20 @@ export default function ManagedAgentsPage() {
 
   const createAgent = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
-    setActionMessage(null);
-    setErrorMessage(null);
+    clearManagedFeedback();
 
     const trimmedAgentId = agentId().trim();
     if (trimmedAgentId.length === 0) {
-      setErrorMessage("Agent id is required");
+      setManagedCreateFeedback({ kind: "error", message: "Agent id is required" });
       return;
     }
 
     const parsedContainerPort = Number.parseInt(containerPort(), 10);
     if (!Number.isFinite(parsedContainerPort) || parsedContainerPort <= 0) {
-      setErrorMessage("Container port must be a positive number");
+      setManagedCreateFeedback({
+        kind: "error",
+        message: "Container port must be a positive number",
+      });
       return;
     }
 
@@ -189,34 +226,50 @@ export default function ManagedAgentsPage() {
         container_port: parsedContainerPort,
         config_mount_path: configMountPath().trim(),
       });
-      setActionMessage(`Created agent '${trimmedAgentId}'`);
+      setManagedCreateFeedback({
+        kind: "success",
+        message: `Created agent '${trimmedAgentId}'`,
+      });
       await syncAgentQueries();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to create agent");
+      setManagedCreateFeedback({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to create agent",
+      });
     }
   };
 
   const startAgent = async (managedAgentId: string): Promise<void> => {
-    setActionMessage(null);
-    setErrorMessage(null);
+    clearManagedFeedback();
     try {
       await startManagedMutation.mutateAsync(managedAgentId);
-      setActionMessage(`Started agent '${managedAgentId}'`);
+      setManagedListFeedback({
+        kind: "success",
+        message: `Started agent '${managedAgentId}'`,
+      });
       await syncAgentQueries();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to start agent");
+      setManagedListFeedback({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to start agent",
+      });
     }
   };
 
   const stopAgent = async (managedAgentId: string): Promise<void> => {
-    setActionMessage(null);
-    setErrorMessage(null);
+    clearManagedFeedback();
     try {
       await stopManagedMutation.mutateAsync(managedAgentId);
-      setActionMessage(`Stopped agent '${managedAgentId}'`);
+      setManagedListFeedback({
+        kind: "success",
+        message: `Stopped agent '${managedAgentId}'`,
+      });
       await syncAgentQueries();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to stop agent");
+      setManagedListFeedback({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to stop agent",
+      });
     }
   };
 
@@ -225,8 +278,7 @@ export default function ManagedAgentsPage() {
       return;
     }
 
-    setActionMessage(null);
-    setErrorMessage(null);
+    clearManagedFeedback();
     addDeletingManagedAgent(managedAgentId);
     try {
       await deleteManagedMutation.mutateAsync(managedAgentId);
@@ -236,24 +288,33 @@ export default function ManagedAgentsPage() {
       }
 
       await syncAgentQueries();
-      setActionMessage(`Deleted agent '${managedAgentId}'`);
+      setManagedListFeedback({
+        kind: "success",
+        message: `Deleted agent '${managedAgentId}'`,
+      });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to delete agent");
+      setManagedListFeedback({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to delete agent",
+      });
     } finally {
       removeDeletingManagedAgent(managedAgentId);
     }
   };
 
   const beginEditManagedAgent = async (managedAgentId: string): Promise<void> => {
-    setActionMessage(null);
-    setErrorMessage(null);
+    clearManagedFeedback();
     try {
       const loadedConfig = await getManagedAgentConfig(managedAgentId);
       setEditingManagedAgentId(managedAgentId);
       setEditingManagedConfigYaml(loadedConfig);
       setRestartManagedAfterConfigSave(true);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to load managed agent config");
+      setManagedListFeedback({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to load managed agent config",
+      });
     }
   };
 
@@ -261,14 +322,15 @@ export default function ManagedAgentsPage() {
     setEditingManagedAgentId(null);
     setEditingManagedConfigYaml("");
     setRestartManagedAfterConfigSave(true);
+    setManagedEditFeedback(null);
   };
 
   const saveManagedAgentConfig = async (managedAgentId: string): Promise<void> => {
-    setActionMessage(null);
-    setErrorMessage(null);
+    setManagedListFeedback(null);
+    setManagedEditFeedback(null);
     const nextConfig = editingManagedConfigYaml().trim();
     if (nextConfig.length === 0) {
-      setErrorMessage("Config YAML cannot be empty");
+      setManagedEditFeedback({ kind: "error", message: "Config YAML cannot be empty" });
       return;
     }
 
@@ -278,27 +340,33 @@ export default function ManagedAgentsPage() {
         config_yaml: nextConfig,
         restart: restartManagedAfterConfigSave(),
       });
-      setActionMessage(`Updated config for managed agent '${managedAgentId}'`);
+      setManagedListFeedback({
+        kind: "success",
+        message: `Updated config for managed agent '${managedAgentId}'`,
+      });
       cancelEditManagedAgent();
       await syncAgentQueries();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to update managed agent config");
+      setManagedEditFeedback({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to update managed agent config",
+      });
     }
   };
 
   const addExternalAgent = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
-    setActionMessage(null);
-    setErrorMessage(null);
+    clearExternalFeedback();
 
     const trimmedAgentId = externalAgentId().trim();
     const trimmedAgentUrl = externalAgentUrl().trim();
     if (trimmedAgentId.length === 0) {
-      setErrorMessage("External agent id is required");
+      setExternalCreateFeedback({ kind: "error", message: "External agent id is required" });
       return;
     }
     if (trimmedAgentUrl.length === 0) {
-      setErrorMessage("External agent URL is required");
+      setExternalCreateFeedback({ kind: "error", message: "External agent URL is required" });
       return;
     }
 
@@ -308,29 +376,41 @@ export default function ManagedAgentsPage() {
         base_url: trimmedAgentUrl,
         use_legacy_card_path: externalUseLegacyCardPath(),
       });
-      setActionMessage(`Added external agent '${trimmedAgentId}'`);
+      setExternalCreateFeedback({
+        kind: "success",
+        message: `Added external agent '${trimmedAgentId}'`,
+      });
       setExternalAgentId("");
       setExternalAgentUrl("");
       setExternalUseLegacyCardPath(false);
       await syncAgentQueries();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to add external agent");
+      setExternalCreateFeedback({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to add external agent",
+      });
     }
   };
 
   const removeExternalAgent = async (externalId: string): Promise<void> => {
-    setActionMessage(null);
-    setErrorMessage(null);
+    clearExternalFeedback();
     try {
       await deleteExternalMutation.mutateAsync(externalId);
-      setActionMessage(`Deleted external agent '${externalId}'`);
+      setExternalListFeedback({
+        kind: "success",
+        message: `Deleted external agent '${externalId}'`,
+      });
       await syncAgentQueries();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to delete external agent");
+      setExternalListFeedback({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to delete external agent",
+      });
     }
   };
 
   const beginEditExternalAgent = (externalAgent: ExternalAgent): void => {
+    clearExternalFeedback();
     setEditingExternalAgentId(externalAgent.agent_id);
     setEditingExternalAgentUrl(externalAgent.base_url);
     setEditingExternalUseLegacyCardPath(externalAgent.use_legacy_card_path);
@@ -340,14 +420,15 @@ export default function ManagedAgentsPage() {
     setEditingExternalAgentId(null);
     setEditingExternalAgentUrl("");
     setEditingExternalUseLegacyCardPath(false);
+    setExternalEditFeedback(null);
   };
 
   const saveExternalAgentEdit = async (agentId: string): Promise<void> => {
-    setActionMessage(null);
-    setErrorMessage(null);
+    setExternalListFeedback(null);
+    setExternalEditFeedback(null);
     const trimmedUrl = editingExternalAgentUrl().trim();
     if (trimmedUrl.length === 0) {
-      setErrorMessage("External agent URL is required");
+      setExternalEditFeedback({ kind: "error", message: "External agent URL is required" });
       return;
     }
     try {
@@ -356,11 +437,17 @@ export default function ManagedAgentsPage() {
         base_url: trimmedUrl,
         use_legacy_card_path: editingExternalUseLegacyCardPath(),
       });
-      setActionMessage(`Updated external agent '${agentId}'`);
+      setExternalListFeedback({
+        kind: "success",
+        message: `Updated external agent '${agentId}'`,
+      });
       cancelEditExternalAgent();
       await syncAgentQueries();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to update external agent");
+      setExternalEditFeedback({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Failed to update external agent",
+      });
     }
   };
 
@@ -430,6 +517,13 @@ export default function ManagedAgentsPage() {
                   "Create and Start"
                 )}
               </button>
+              <FeedbackAlert feedback={managedCreateFeedback()} />
+              {createManagedMutation.isPending ? (
+                <p class="alert alert-info text-sm">
+                  <span class="loading loading-spinner loading-sm" />
+                  Starting managed agent container and waiting for readiness...
+                </p>
+              ) : null}
             </form>
             </div>
           </section>
@@ -476,6 +570,7 @@ export default function ManagedAgentsPage() {
                   "Add External Agent"
                 )}
               </button>
+              <FeedbackAlert feedback={externalCreateFeedback()} />
             </form>
             </div>
           </section>
@@ -495,18 +590,15 @@ export default function ManagedAgentsPage() {
               </button>
             </div>
 
-            {errorMessage() || queryErrorMessage() ? (
-              <p class="alert alert-error mb-3 text-sm">{errorMessage() ?? queryErrorMessage()}</p>
-            ) : null}
-            {actionMessage() ? (
-              <p class="alert alert-success mb-3 text-sm">{actionMessage()}</p>
-            ) : null}
-            {createManagedMutation.isPending ? (
-              <p class="alert alert-info mb-3 text-sm">
-                <span class="loading loading-spinner loading-sm" />
-                Starting managed agent container and waiting for readiness...
-              </p>
-            ) : null}
+            <FeedbackAlert
+              feedback={
+                managedListFeedback() ??
+                (managedQueryErrorMessage()
+                  ? { kind: "error", message: managedQueryErrorMessage() ?? "" }
+                  : null)
+              }
+              class="mb-3"
+            />
 
             <div class="grid gap-3">
               {shouldShowLoading() && visibleManagedAgents().length === 0 ? (
@@ -618,6 +710,7 @@ export default function ManagedAgentsPage() {
                           value={editingManagedConfigYaml()}
                           onInput={(event) => setEditingManagedConfigYaml(event.currentTarget.value)}
                         />
+                        <FeedbackAlert feedback={managedEditFeedback()} />
                         <label class="label cursor-pointer justify-start gap-3">
                           <input
                             type="checkbox"
@@ -666,6 +759,15 @@ export default function ManagedAgentsPage() {
             <div class="mb-4 flex items-center justify-between">
               <h2 class="card-title">External Agents</h2>
             </div>
+            <FeedbackAlert
+              feedback={
+                externalListFeedback() ??
+                (externalQueryErrorMessage()
+                  ? { kind: "error", message: externalQueryErrorMessage() ?? "" }
+                  : null)
+              }
+              class="mb-3"
+            />
             <div class="grid gap-3">
               {shouldShowLoading() && visibleExternalAgents().length === 0 ? (
                 <>
@@ -719,6 +821,7 @@ export default function ManagedAgentsPage() {
                           value={editingExternalAgentUrl()}
                           onInput={(event) => setEditingExternalAgentUrl(event.currentTarget.value)}
                         />
+                        <FeedbackAlert feedback={externalEditFeedback()} />
                         <label class="label cursor-pointer justify-start gap-3">
                           <input
                             type="checkbox"

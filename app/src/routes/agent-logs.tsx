@@ -62,7 +62,6 @@ export default function AgentLogsPage() {
     return logsQuery.data ?? lastSuccessfulEntries();
   });
   const isInitialLoading = () => !isClientReady() || (logsQuery.isPending && entries().length === 0);
-  const isRefreshing = () => isClientReady() && logsQuery.isFetching && entries().length > 0;
 
   const agentOrder = createMemo(() => entries().map((entry) => entry.agent.agent_id));
   const entriesById = createMemo(() => {
@@ -151,7 +150,6 @@ export default function AgentLogsPage() {
           </div>
 
           {lastUpdated() ? <p class="text-xs text-base-content/50">Last updated: {lastUpdated()}</p> : null}
-          {isRefreshing() ? <p class="alert alert-info text-xs"><span class="loading loading-spinner loading-xs" />Refreshing logs...</p> : null}
 
           <div class="grid gap-4">
             {isInitialLoading() && agentOrder().length === 0 ? (

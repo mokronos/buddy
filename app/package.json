@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "vinxi dev",
     "build": "vinxi build",
-    "start": "vinxi start"
+    "start": "vinxi start",
+    "postinstall": "node scripts/fix-dependency-sourcemaps.mjs"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.10",

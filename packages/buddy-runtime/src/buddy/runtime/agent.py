@@ -7,9 +7,12 @@ from buddy.runtime.tools.web_search import fetch_web_page, web_search
 from dotenv import load_dotenv
 from langfuse import Langfuse
 from pydantic_ai import Agent
+from pydantic_ai.mcp import MCPServerStreamableHTTP
 from pydantic_ai.toolsets import FunctionToolset
 
 load_dotenv()
+
+LINEAGE_MCP_URL = os.environ.get("BUDDY_LINEAGE_MCP_URL", "http://127.0.0.1:18001/mcp")
 
 
 def _raise_langfuse_auth_error() -> NoReturn:
@@ -78,7 +81,7 @@ def create_agent(
     enable_web_search: bool = True,
     enable_todo: bool = True,
 ) -> Agent[None, str]:
-    toolsets = []
+    toolsets = [MCPServerStreamableHTTP(LINEAGE_MCP_URL)]
     if enable_web_search:
         toolsets.append(web_tools)
     if enable_todo:

@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/solid-query";
 import { createSignal, onMount } from "solid-js";
 import { listExternalAgents } from "~/a2a/externalAgents";
 import { listManagedAgents } from "~/a2a/managedAgents";
-import ExternalAgentsSection from "~/components/managed-agents/ExternalAgentsSection";
 import ManagedAgentCreateSection from "~/components/managed-agents/ManagedAgentCreateSection";
 import ManagedAgentsSection from "~/components/managed-agents/ManagedAgentsSection";
 import { useExternalAgentsAdmin } from "~/components/managed-agents/useExternalAgentsAdmin";
@@ -62,94 +61,76 @@ export default function ManagedAgentsPage() {
   const externalAdmin = useExternalAgentsAdmin({ syncAgentQueries });
 
   return (
-    <main class="flex min-h-screen flex-col">
+    <main class="flex h-screen flex-col overflow-hidden">
       <TopTabs />
-      <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6">
-        <div class="mx-auto flex w-full max-w-6xl flex-col gap-6">
-          <div class="hero overflow-hidden rounded-box border border-base-100/10 bg-base-100 shadow-xl">
-            <div class="hero-content w-full justify-start bg-[linear-gradient(135deg,rgba(255,255,255,0.05),transparent)] p-6">
-              <div>
-                <div class="badge badge-primary badge-outline mb-3">Control Plane</div>
-                <h1 class="text-3xl font-semibold">Managed Agents</h1>
-                <p class="mt-2 max-w-3xl text-sm text-base-content/70">
-                  Create, run, and edit Docker-backed agent containers. Runtime infrastructure values are auto-managed,
-                  while model behavior and MCP servers are configured through the structured form.
-                </p>
-              </div>
-            </div>
-          </div>
-
+      <div class="min-h-0 flex-1 overflow-hidden px-4 py-4 lg:px-6">
+        <div class="mx-auto grid h-full w-full max-w-7xl gap-6 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
           <ManagedAgentCreateSection
             form={managedAdmin.createManagedForm()}
             onFormChange={managedAdmin.setCreateManagedForm}
             onSubmit={managedAdmin.createAgent}
             isSubmitting={managedAdmin.createManagedMutation.isPending}
             feedback={managedAdmin.managedCreateFeedback()}
-          />
-
-          <ManagedAgentsSection
-            agents={managedAgents()}
-            shouldShowLoading={shouldShowLoading()}
-            listFeedback={managedAdmin.managedListFeedback()}
-            listErrorMessage={managedQueryErrorMessage()}
-            editFeedback={managedAdmin.managedEditFeedback()}
-            editingAgentId={managedAdmin.editingManagedAgentId()}
-            editingConfig={managedAdmin.editingManagedConfig()}
-            restartAfterSave={managedAdmin.restartManagedAfterConfigSave()}
-            isSavingEdit={managedAdmin.updateManagedConfigMutation.isPending}
-            isDeletingAgent={managedAdmin.isDeletingManagedAgent}
-            onRefresh={() => {
-              void syncAgentQueries();
-            }}
-            onStart={(agentId) => {
-              void managedAdmin.startAgent(agentId);
-            }}
-            onStop={(agentId) => {
-              void managedAdmin.stopAgent(agentId);
-            }}
-            onBeginEdit={(agentId) => {
-              void managedAdmin.beginEditManagedAgent(agentId);
-            }}
-            onDelete={(agentId) => {
-              void managedAdmin.removeAgent(agentId);
-            }}
-            onEditingConfigChange={managedAdmin.setEditingManagedConfig}
-            onRestartAfterSaveChange={managedAdmin.setRestartManagedAfterConfigSave}
-            onSaveEdit={(agentId) => {
-              void managedAdmin.saveManagedAgentConfig(agentId);
-            }}
-            onCancelEdit={managedAdmin.cancelEditManagedAgent}
-          />
-
-          <ExternalAgentsSection
-            agents={externalAgents()}
-            shouldShowLoading={shouldShowLoading()}
-            createFeedback={externalAdmin.externalCreateFeedback()}
-            listFeedback={externalAdmin.externalListFeedback()}
-            listErrorMessage={externalQueryErrorMessage()}
-            editFeedback={externalAdmin.externalEditFeedback()}
             externalAgentId={externalAdmin.externalAgentId()}
             externalAgentUrl={externalAdmin.externalAgentUrl()}
             externalUseLegacyCardPath={externalAdmin.externalUseLegacyCardPath()}
-            editingExternalAgentId={externalAdmin.editingExternalAgentId()}
-            editingExternalAgentUrl={externalAdmin.editingExternalAgentUrl()}
-            editingExternalUseLegacyCardPath={externalAdmin.editingExternalUseLegacyCardPath()}
-            isCreating={externalAdmin.createExternalMutation.isPending}
-            isUpdating={externalAdmin.updateExternalMutation.isPending}
+            isExternalSubmitting={externalAdmin.createExternalMutation.isPending}
+            externalFeedback={externalAdmin.externalCreateFeedback()}
             onExternalAgentIdChange={externalAdmin.setExternalAgentId}
             onExternalAgentUrlChange={externalAdmin.setExternalAgentUrl}
             onExternalUseLegacyCardPathChange={externalAdmin.setExternalUseLegacyCardPath}
-            onEditingExternalAgentUrlChange={externalAdmin.setEditingExternalAgentUrl}
-            onEditingExternalUseLegacyCardPathChange={externalAdmin.setEditingExternalUseLegacyCardPath}
-            onSubmit={externalAdmin.addExternalAgent}
-            onBeginEdit={externalAdmin.beginEditExternalAgent}
-            onCancelEdit={externalAdmin.cancelEditExternalAgent}
-            onSaveEdit={(agentId) => {
-              void externalAdmin.saveExternalAgentEdit(agentId);
+            onExternalSubmit={externalAdmin.addExternalAgent}
+          />
+
+          <ManagedAgentsSection
+            managedAgents={managedAgents()}
+            externalAgents={externalAgents()}
+            shouldShowLoading={shouldShowLoading()}
+            managedListFeedback={managedAdmin.managedListFeedback()}
+            externalListFeedback={externalAdmin.externalListFeedback()}
+            listErrorMessage={managedQueryErrorMessage() ?? externalQueryErrorMessage()}
+            managedEditFeedback={managedAdmin.managedEditFeedback()}
+            externalEditFeedback={externalAdmin.externalEditFeedback()}
+            editingManagedAgentId={managedAdmin.editingManagedAgentId()}
+            editingExternalAgentId={externalAdmin.editingExternalAgentId()}
+            editingManagedConfig={managedAdmin.editingManagedConfig()}
+            editingExternalAgentUrl={externalAdmin.editingExternalAgentUrl()}
+            editingExternalUseLegacyCardPath={externalAdmin.editingExternalUseLegacyCardPath()}
+            restartAfterSave={managedAdmin.restartManagedAfterConfigSave()}
+            isSavingManagedEdit={managedAdmin.updateManagedConfigMutation.isPending}
+            isSavingExternalEdit={externalAdmin.updateExternalMutation.isPending}
+            isDeletingManagedAgent={managedAdmin.isDeletingManagedAgent}
+            onRefresh={() => {
+              void syncAgentQueries();
             }}
-            onDelete={(agentId) => {
+            onStartManaged={(agentId) => {
+              void managedAdmin.startAgent(agentId);
+            }}
+            onStopManaged={(agentId) => {
+              void managedAdmin.stopAgent(agentId);
+            }}
+            onBeginEditManaged={(agentId) => {
+              void managedAdmin.beginEditManagedAgent(agentId);
+            }}
+            onDeleteManaged={(agentId) => {
+              void managedAdmin.removeAgent(agentId);
+            }}
+            onEditingManagedConfigChange={managedAdmin.setEditingManagedConfig}
+            onRestartAfterSaveChange={managedAdmin.setRestartManagedAfterConfigSave}
+            onSaveManagedEdit={(agentId) => {
+              void managedAdmin.saveManagedAgentConfig(agentId);
+            }}
+            onCancelManagedEdit={managedAdmin.cancelEditManagedAgent}
+            onBeginEditExternal={externalAdmin.beginEditExternalAgent}
+            onDeleteExternal={(agentId) => {
               void externalAdmin.removeExternalAgent(agentId);
             }}
+            onEditingExternalAgentUrlChange={externalAdmin.setEditingExternalAgentUrl}
+            onEditingExternalUseLegacyCardPathChange={externalAdmin.setEditingExternalUseLegacyCardPath}
+            onSaveExternalEdit={(agentId) => {
+              void externalAdmin.saveExternalAgentEdit(agentId);
+            }}
+            onCancelExternalEdit={externalAdmin.cancelEditExternalAgent}
           />
         </div>
       </div>

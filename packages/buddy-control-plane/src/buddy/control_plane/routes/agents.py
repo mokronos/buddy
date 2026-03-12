@@ -1,9 +1,11 @@
 from buddy.control_plane.server_state import ServerState
-from buddy.control_plane.validation import validate_agent_id
+from buddy.control_plane.validation import derive_agent_id_from_name, validate_agent_id
 from buddy.shared.runtime_config import (
-    RuntimeAgentConfig,
+    UserRuntimeAgentConfig,
+    build_runtime_agent_config,
     dump_runtime_agent_config_yaml,
     parse_runtime_agent_config_yaml,
+    to_user_runtime_agent_config,
 )
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -12,10 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 
 class ManagedAgentCreateRequest(BaseModel):
-    agent_id: str = Field(min_length=1, max_length=63)
-    image: str = "buddy-agent-runtime:latest"
-    config: RuntimeAgentConfig
-    config_mount_path: str = "/etc/buddy/agent.yaml"
+    config: UserRuntimeAgentConfig
     env: dict[str, str] = Field(default_factory=dict)
     command: list[str] | None = None
 
@@ -26,7 +25,7 @@ class ManagedAgentStartRequest(BaseModel):
 
 
 class ManagedAgentConfigUpdateRequest(BaseModel):
-    config: RuntimeAgentConfig
+    config: UserRuntimeAgentConfig
     restart: bool = True
 
 
@@ -132,7 +131,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
         try:
             normalized_agent_id = validate_agent_id(agent_id)
             config_yaml = await run_in_threadpool(state.managed_agent_manager.get_agent_config, normalized_agent_id)
-            config = parse_runtime_agent_config_yaml(config_yaml)
+            config = to_user_runtime_agent_config(parse_runtime_agent_config_yaml(config_yaml))
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         return JSONResponse({"config": config.model_dump(mode="json")})
@@ -141,10 +140,11 @@ def build_agents_router(state: ServerState) -> APIRouter:
     async def update_managed_agent_config(agent_id: str, payload: ManagedAgentConfigUpdateRequest) -> JSONResponse:
         try:
             normalized_agent_id = validate_agent_id(agent_id)
+            runtime_config = build_runtime_agent_config(payload.config, agent_id=normalized_agent_id)
             record = await run_in_threadpool(
                 state.managed_agent_manager.update_agent_config,
                 normalized_agent_id,
-                dump_runtime_agent_config_yaml(payload.config),
+                dump_runtime_agent_config_yaml(runtime_config),
                 payload.restart,
             )
         except ValueError as error:
@@ -173,14 +173,12 @@ def build_agents_router(state: ServerState) -> APIRouter:
     @router.post("/agents/managed")
     async def create_managed_agent(payload: ManagedAgentCreateRequest) -> JSONResponse:
         try:
-            normalized_agent_id = validate_agent_id(payload.agent_id)
+            normalized_agent_id = derive_agent_id_from_name(payload.config.agent.name)
+            runtime_config = build_runtime_agent_config(payload.config, agent_id=normalized_agent_id)
             record = await run_in_threadpool(
                 state.managed_agent_manager.create_agent,
                 agent_id=normalized_agent_id,
-                image=payload.image,
-                config_yaml=dump_runtime_agent_config_yaml(payload.config),
-                container_port=payload.config.a2a.port,
-                config_mount_path=payload.config_mount_path,
+                config_yaml=dump_runtime_agent_config_yaml(runtime_config),
                 extra_env=payload.env,
                 command=payload.command,
             )

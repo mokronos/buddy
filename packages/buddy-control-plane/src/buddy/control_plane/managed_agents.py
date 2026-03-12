@@ -17,6 +17,10 @@ from buddy.control_plane.validation import validate_agent_id
 from buddy.data_dirs import buddy_data_dir
 from buddy.shared.logging import get_logger
 from buddy.shared.runtime_config import (
+    DEFAULT_RUNTIME_A2A_MOUNT_PATH,
+    DEFAULT_RUNTIME_A2A_PORT,
+    DEFAULT_RUNTIME_CONFIG_MOUNT_PATH,
+    DEFAULT_RUNTIME_IMAGE,
     load_runtime_agent_config,
     parse_runtime_agent_config_yaml,
     runtime_agent_card_path,
@@ -72,10 +76,7 @@ class ManagedAgentManager:
         self,
         *,
         agent_id: str,
-        image: str,
         config_yaml: str,
-        container_port: int,
-        config_mount_path: str,
         extra_env: dict[str, str],
         command: list[str] | None,
     ) -> ManagedAgentRecord:
@@ -87,16 +88,15 @@ class ManagedAgentManager:
                 self._ensure_agent_absent(normalized_agent_id)
 
                 self._validate_config(normalized_agent_id, config_yaml)
-                runtime_config = parse_runtime_agent_config_yaml(config_yaml)
                 config_path = self._write_config(normalized_agent_id, config_yaml)
                 now = self._now()
                 record = ManagedAgentRecord(
                     agent_id=normalized_agent_id,
-                    image=image,
+                    image=DEFAULT_RUNTIME_IMAGE,
                     config_path=str(config_path),
-                    config_mount_path=config_mount_path,
-                    container_port=runtime_config.a2a.port,
-                    a2a_mount_path=runtime_config.a2a.mount_path,
+                    config_mount_path=DEFAULT_RUNTIME_CONFIG_MOUNT_PATH,
+                    container_port=DEFAULT_RUNTIME_A2A_PORT,
+                    a2a_mount_path=DEFAULT_RUNTIME_A2A_MOUNT_PATH,
                     container_id=None,
                     host_port=None,
                     status="created",
@@ -127,9 +127,9 @@ class ManagedAgentManager:
                 outcome="error",
                 error=error,
                 agent_id=normalized_agent_id,
-                image=image,
-                container_port=container_port,
-                config_mount_path=config_mount_path,
+                image=DEFAULT_RUNTIME_IMAGE,
+                container_port=DEFAULT_RUNTIME_A2A_PORT,
+                config_mount_path=DEFAULT_RUNTIME_CONFIG_MOUNT_PATH,
                 env_keys=sorted(extra_env.keys()),
                 command_length=len(command or []),
             )
@@ -316,7 +316,6 @@ class ManagedAgentManager:
         start_time = perf_counter()
         normalized_agent_id = agent_id
         try:
-            runtime_config = parse_runtime_agent_config_yaml(config_yaml)
             with self._lock:
                 normalized_agent_id = validate_agent_id(agent_id)
                 record = self._require_record(normalized_agent_id)
@@ -325,8 +324,8 @@ class ManagedAgentManager:
                 updated_fields: dict[str, object] = {}
                 if record.status != "running" or restart:
                     updated_fields = {
-                        "container_port": runtime_config.a2a.port,
-                        "a2a_mount_path": runtime_config.a2a.mount_path,
+                        "container_port": DEFAULT_RUNTIME_A2A_PORT,
+                        "a2a_mount_path": DEFAULT_RUNTIME_A2A_MOUNT_PATH,
                     }
                 updated = replace(record, **updated_fields, updated_at=self._now())
                 self._records[normalized_agent_id] = updated
@@ -434,7 +433,7 @@ class ManagedAgentManager:
         extra_env: dict[str, str],
         command: list[str] | None,
     ) -> ManagedAgentRecord:
-        runtime_config = self._load_runtime_config(record.config_path)
+        self._load_runtime_config(record.config_path)
         inherited_env = {
             key: value
             for key in [
@@ -469,7 +468,7 @@ class ManagedAgentManager:
 
         self._prune_stale_agent_containers(record.agent_id)
 
-        port_key = f"{runtime_config.a2a.port}/tcp"
+        port_key = f"{DEFAULT_RUNTIME_A2A_PORT}/tcp"
         container_name = self._agent_container_name(record.agent_id)
         created_container = False
         container = None
@@ -496,8 +495,8 @@ class ManagedAgentManager:
                     "buddy.agent_id": record.agent_id,
                     "buddy.config_path": record.config_path,
                     "buddy.config_mount_path": record.config_mount_path,
-                    "buddy.container_port": str(runtime_config.a2a.port),
-                    "buddy.a2a_mount_path": runtime_config.a2a.mount_path,
+                    "buddy.container_port": str(DEFAULT_RUNTIME_A2A_PORT),
+                    "buddy.a2a_mount_path": DEFAULT_RUNTIME_A2A_MOUNT_PATH,
                 },
             )
             created_container = True
@@ -508,11 +507,11 @@ class ManagedAgentManager:
         if not bindings:
             if created_container:
                 container.remove(force=True)
-            raise RuntimeError(f"Container for '{record.agent_id}' did not expose port {runtime_config.a2a.port}")
+            raise RuntimeError(f"Container for '{record.agent_id}' did not expose port {DEFAULT_RUNTIME_A2A_PORT}")
         host_port = int(bindings[0]["HostPort"])
 
         try:
-            self._wait_for_a2a_ready(record.agent_id, host_port, runtime_config.a2a.mount_path)
+            self._wait_for_a2a_ready(record.agent_id, host_port, DEFAULT_RUNTIME_A2A_MOUNT_PATH)
         except Exception as error:
             if created_container:
                 container.remove(force=True)
@@ -520,8 +519,8 @@ class ManagedAgentManager:
 
         return replace(
             record,
-            container_port=runtime_config.a2a.port,
-            a2a_mount_path=runtime_config.a2a.mount_path,
+            container_port=DEFAULT_RUNTIME_A2A_PORT,
+            a2a_mount_path=DEFAULT_RUNTIME_A2A_MOUNT_PATH,
             container_id=container.id,
             host_port=host_port,
             status=container.status,
@@ -589,11 +588,13 @@ class ManagedAgentManager:
                     if not isinstance(config_path, str) or not isinstance(config_mount_path, str):
                         continue
                     try:
-                        container_port = int(container_port_raw) if isinstance(container_port_raw, str) else 10001
+                        container_port = (
+                            int(container_port_raw) if isinstance(container_port_raw, str) else DEFAULT_RUNTIME_A2A_PORT
+                        )
                     except ValueError:
-                        container_port = 10001
+                        container_port = DEFAULT_RUNTIME_A2A_PORT
                     if not isinstance(a2a_mount_path, str):
-                        a2a_mount_path = "/"
+                        a2a_mount_path = DEFAULT_RUNTIME_A2A_MOUNT_PATH
                     now = self._now()
                     image_obj = container.image
                     tags = image_obj.tags if image_obj is not None else []
@@ -614,7 +615,9 @@ class ManagedAgentManager:
 
                 refreshed = self._refresh_status(existing)
                 if refreshed.container_id is None:
-                    refreshed = replace(refreshed, container_id=container.id, status=container.status, updated_at=self._now())
+                    refreshed = replace(
+                        refreshed, container_id=container.id, status=container.status, updated_at=self._now()
+                    )
                     refreshed = self._refresh_status(refreshed)
 
                 self._records[agent_id] = refreshed

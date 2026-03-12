@@ -4,6 +4,13 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
+DEFAULT_RUNTIME_IMAGE = "buddy-agent-runtime:latest"
+DEFAULT_RUNTIME_CONFIG_MOUNT_PATH = "/etc/buddy/agent.yaml"
+DEFAULT_RUNTIME_A2A_PORT = 8000
+DEFAULT_RUNTIME_A2A_MOUNT_PATH = "/a2a"
+DEFAULT_MCP_SERVER_URL = "http://127.0.0.1:18001/mcp"
+
+
 class AgentSection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -16,8 +23,8 @@ class AgentSection(BaseModel):
 class A2ASection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    port: int = Field(default=8000, ge=1, le=65535)
-    mount_path: str = Field(default="/a2a", min_length=1)
+    port: int = Field(default=DEFAULT_RUNTIME_A2A_PORT, ge=1, le=65535)
+    mount_path: str = Field(default=DEFAULT_RUNTIME_A2A_MOUNT_PATH, min_length=1)
 
     @field_validator("mount_path")
     @classmethod
@@ -29,27 +36,63 @@ class A2ASection(BaseModel):
         return value
 
 
-class ToolsSection(BaseModel):
+class MCPServerSection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    web_search: bool = True
-    todo: bool = True
+    url: str = Field(min_length=1)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("mcp server url is required")
+        return trimmed
 
 
-class MCPSection(BaseModel):
+class UserAgentSection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = True
-    url: str = Field(default="http://127.0.0.1:18001/mcp", min_length=1)
+    name: str = Field(min_length=1, max_length=200)
+    instructions: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+
+
+class UserRuntimeAgentConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent: UserAgentSection
+    mcp_servers: list[MCPServerSection] = Field(default_factory=lambda: [MCPServerSection(url=DEFAULT_MCP_SERVER_URL)])
 
 
 class RuntimeAgentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent: AgentSection
-    a2a: A2ASection = Field(default_factory=A2ASection)
-    tools: ToolsSection = Field(default_factory=ToolsSection)
-    mcp: MCPSection = Field(default_factory=MCPSection)
+    mcp_servers: list[MCPServerSection] = Field(default_factory=lambda: [MCPServerSection(url=DEFAULT_MCP_SERVER_URL)])
+
+
+def build_runtime_agent_config(user_config: UserRuntimeAgentConfig, *, agent_id: str) -> RuntimeAgentConfig:
+    return RuntimeAgentConfig(
+        agent=AgentSection(
+            id=agent_id,
+            name=user_config.agent.name,
+            instructions=user_config.agent.instructions,
+            model=user_config.agent.model,
+        ),
+        mcp_servers=user_config.mcp_servers,
+    )
+
+
+def to_user_runtime_agent_config(config: RuntimeAgentConfig) -> UserRuntimeAgentConfig:
+    return UserRuntimeAgentConfig(
+        agent=UserAgentSection(
+            name=config.agent.name,
+            instructions=config.agent.instructions,
+            model=config.agent.model,
+        ),
+        mcp_servers=config.mcp_servers,
+    )
 
 
 def parse_runtime_agent_config_yaml(config_yaml: str) -> RuntimeAgentConfig:

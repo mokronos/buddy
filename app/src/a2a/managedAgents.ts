@@ -14,10 +14,7 @@ import {
 export type ManagedAgent = ManagedAgentPayload;
 
 export interface ManagedAgentCreateInput {
-  agent_id: string;
-  image: string;
   config: RuntimeAgentConfigPayload;
-  config_mount_path: string;
 }
 
 export interface ManagedAgentLogs {

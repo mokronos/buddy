@@ -8,7 +8,5 @@ export type FeedbackState =
   | null;
 
 export interface ManagedCreateFormState {
-  image: string;
-  config_mount_path: string;
   config: RuntimeAgentConfigPayload;
 }

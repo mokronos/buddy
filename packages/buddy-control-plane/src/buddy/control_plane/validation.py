@@ -16,6 +16,18 @@ def validate_agent_id(agent_id: str) -> str:
     return normalized
 
 
+def derive_agent_id_from_name(name: str) -> str:
+    normalized_name = name.strip().lower()
+    if not normalized_name:
+        raise ValueError("Agent name is required")
+
+    candidate = re.sub(r"[^a-z0-9]+", "-", normalized_name).strip("-")
+    candidate = candidate[:63].strip("-")
+    if not candidate:
+        raise ValueError("Agent name must include at least one letter or number")
+    return validate_agent_id(candidate)
+
+
 def normalize_external_base_url(base_url: str, *, allow_private_hosts: bool = True) -> str:
     normalized = base_url.strip().rstrip("/")
     parsed = urlparse(normalized)

@@ -29,15 +29,12 @@ def test_create_agent_rolls_back_registry_and_config_when_start_fails(tmp_path) 
     with pytest.raises(RuntimeError, match="readiness failed"):
         manager.create_agent(
             agent_id=agent_id,
-            image="buddy-agent-runtime:latest",
             config_yaml="""agent:
   id: demo-agent
   name: Demo Agent
   instructions: "You are helpful"
   model: openrouter:openrouter/free
 """,
-            container_port=8000,
-            config_mount_path="/etc/buddy/agent.yaml",
             extra_env={},
             command=None,
         )

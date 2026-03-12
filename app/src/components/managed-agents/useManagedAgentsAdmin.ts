@@ -74,33 +74,15 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
       return;
     }
 
-    const trimmedImage = nextForm.image.trim();
-    const trimmedConfigMountPath = nextForm.config_mount_path.trim();
-    if (trimmedImage.length === 0) {
-      setManagedCreateFeedback({ kind: "error", message: "Container image is required" });
-      return;
-    }
-    if (trimmedConfigMountPath.length === 0) {
-      setManagedCreateFeedback({ kind: "error", message: "Config mount path is required" });
-      return;
-    }
-
-    setCreateManagedForm({
-      image: trimmedImage,
-      config_mount_path: trimmedConfigMountPath,
-      config: normalizedConfig,
-    });
+    setCreateManagedForm({ config: normalizedConfig });
 
     try {
-      await createManagedMutation.mutateAsync({
-        agent_id: normalizedConfig.agent.id,
-        image: trimmedImage,
-        config_mount_path: trimmedConfigMountPath,
+      const createdAgent = await createManagedMutation.mutateAsync({
         config: normalizedConfig,
       });
       setManagedCreateFeedback({
         kind: "success",
-        message: `Created agent '${normalizedConfig.agent.id}'`,
+        message: `Created agent '${createdAgent.agent_id}'`,
       });
       setCreateManagedForm(createDefaultManagedForm());
       await props.syncAgentQueries();
@@ -208,7 +190,7 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
     }
 
     const normalizedConfig = normalizeRuntimeConfig(nextConfig);
-    const validationError = validateRuntimeConfig(normalizedConfig, { lockedAgentId: managedAgentId });
+    const validationError = validateRuntimeConfig(normalizedConfig);
     if (validationError) {
       setManagedEditFeedback({ kind: "error", message: validationError });
       return;

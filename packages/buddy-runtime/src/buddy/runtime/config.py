@@ -9,9 +9,6 @@ def build_runtime_agents(config: RuntimeAgentConfig) -> dict[str, Agent[None, st
         name=config.agent.name,
         instructions=config.agent.instructions,
         model=config.agent.model,
-        enable_web_search=config.tools.web_search,
-        enable_todo=config.tools.todo,
-        enable_mcp=config.mcp.enabled,
-        mcp_url=config.mcp.url,
+        mcp_server_urls=[server.url for server in config.mcp_servers],
     )
     return {config.agent.id: agent}

@@ -1,4 +1,5 @@
 import logging
+import os
 from time import sleep
 from typing import Any, NoReturn, cast
 
@@ -41,7 +42,9 @@ class OptionalMCPServerStreamableHTTP(MCPServerStreamableHTTP):
             return await super().get_tools(ctx)
         except Exception as error:
             self._available = False
-            logger.warning("Failed to load env_pool MCP tools from %s; continuing without MCP tools: %s", self.url, error)
+            logger.warning(
+                "Failed to load env_pool MCP tools from %s; continuing without MCP tools: %s", self.url, error
+            )
             return {}
 
 
@@ -108,18 +111,13 @@ def create_agent(
     instructions: str,
     *,
     model: str = "openrouter:openrouter/free",
-    enable_web_search: bool = True,
-    enable_todo: bool = True,
-    enable_mcp: bool = True,
-    mcp_url: str = "http://127.0.0.1:18001/mcp",
+    mcp_server_urls: list[str] | None = None,
 ) -> Agent[None, str]:
     toolsets: list[object] = []
-    if enable_mcp:
-        toolsets.append(OptionalMCPServerStreamableHTTP(mcp_url))
-    if enable_web_search:
-        toolsets.append(web_tools)
-    if enable_todo:
-        toolsets.append(todo_tools)
+    for mcp_server_url in mcp_server_urls or []:
+        toolsets.append(OptionalMCPServerStreamableHTTP(mcp_server_url))
+    toolsets.append(web_tools)
+    toolsets.append(todo_tools)
 
     return Agent(
         model=model,

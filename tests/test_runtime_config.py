@@ -4,6 +4,7 @@ from buddy.shared.runtime_config import (
     parse_runtime_agent_config_yaml,
     runtime_agent_card_path,
     runtime_extended_card_path,
+    runtime_rpc_path,
 )
 
 
@@ -14,20 +15,16 @@ def test_parse_runtime_config_valid() -> None:
   name: Demo Agent
   instructions: "You are helpful"
   model: openrouter:openrouter/free
-tools:
-  web_search: true
-  todo: false
-mcp:
-  enabled: true
-  url: http://127.0.0.1:18001/mcp
+mcp_servers:
+  - url: http://127.0.0.1:18001/mcp
+  - url: http://127.0.0.1:18002/mcp
 """
     )
     assert config.agent.id == "demo-agent"
-    assert config.a2a.port == 8000
-    assert config.tools.web_search is True
-    assert config.tools.todo is False
-    assert config.mcp.enabled is True
-    assert config.mcp.url == "http://127.0.0.1:18001/mcp"
+    assert [server.url for server in config.mcp_servers] == [
+        "http://127.0.0.1:18001/mcp",
+        "http://127.0.0.1:18002/mcp",
+    ]
 
 
 def test_parse_runtime_config_rejects_unknown_fields() -> None:
@@ -51,44 +48,32 @@ def test_parse_runtime_config_rejects_removed_environment_tools_section() -> Non
   name: Demo Agent
   instructions: "You are helpful"
   model: openrouter:openrouter/free
-tools:
-  environment: true
+a2a:
+  port: 9000
 """
         )
 
 
 def test_parse_runtime_config_normalizes_a2a_mount_path() -> None:
+    assert runtime_rpc_path("/rpc/") == "/rpc"
+
+
+def test_dump_runtime_config_yaml_preserves_mcp_servers() -> None:
     config = parse_runtime_agent_config_yaml(
         """agent:
   id: demo-agent
   name: Demo Agent
   instructions: "You are helpful"
   model: openrouter:openrouter/free
-a2a:
-  mount_path: /rpc/
-"""
-    )
-    assert config.a2a.mount_path == "/rpc"
-
-
-def test_dump_runtime_config_yaml_preserves_mcp_section() -> None:
-    config = parse_runtime_agent_config_yaml(
-        """agent:
-  id: demo-agent
-  name: Demo Agent
-  instructions: "You are helpful"
-  model: openrouter:openrouter/free
-mcp:
-  enabled: false
-  url: http://example.com/mcp
+mcp_servers:
+  - url: http://example.com/mcp
 """
     )
 
     dumped = dump_runtime_agent_config_yaml(config)
 
-    assert "mcp:" in dumped
-    assert "enabled: false" in dumped
-    assert "url: http://example.com/mcp" in dumped
+    assert "mcp_servers:" in dumped
+    assert "- url: http://example.com/mcp" in dumped
 
 
 def test_runtime_path_helpers_handle_root_and_prefixed_mounts() -> None:

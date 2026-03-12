@@ -15,41 +15,11 @@ export default function ManagedAgentCreateSection(props: {
         <div>
           <h2 class="card-title">Create Agent</h2>
           <p class="mt-1 text-sm text-base-content/70">
-            The runtime config below is the source of truth for agent identity, A2A server settings, tools, and MCP
-            connectivity.
+            Configure the agent behavior only. Runtime image, mount path, A2A path, ports, tools, and agent id are
+            generated automatically.
           </p>
         </div>
         <form class="grid gap-4" onSubmit={props.onSubmit}>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="form-control">
-              <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
-                Runtime Image
-              </span>
-              <input
-                class="input input-bordered w-full"
-                value={props.form.image}
-                onInput={(event) =>
-                  props.onFormChange({
-                    ...props.form,
-                    image: event.currentTarget.value,
-                  })}
-              />
-            </label>
-            <label class="form-control">
-              <span class="label-text text-xs font-medium uppercase tracking-wide text-base-content/60">
-                Config Mount Path
-              </span>
-              <input
-                class="input input-bordered w-full"
-                value={props.form.config_mount_path}
-                onInput={(event) =>
-                  props.onFormChange({
-                    ...props.form,
-                    config_mount_path: event.currentTarget.value,
-                  })}
-              />
-            </label>
-          </div>
           <ManagedConfigFields
             config={props.form.config}
             onChange={(config) =>

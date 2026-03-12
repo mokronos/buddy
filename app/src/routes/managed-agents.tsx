@@ -72,8 +72,8 @@ export default function ManagedAgentsPage() {
                 <div class="badge badge-primary badge-outline mb-3">Control Plane</div>
                 <h1 class="text-3xl font-semibold">Managed Agents</h1>
                 <p class="mt-2 max-w-3xl text-sm text-base-content/70">
-                  Create, run, and edit Docker-backed agent containers with explicit runtime fields. YAML editing is
-                  disabled; every supported config value is exposed as a structured form.
+                  Create, run, and edit Docker-backed agent containers. Runtime infrastructure values are auto-managed,
+                  while model behavior and MCP servers are configured through the structured form.
                 </p>
               </div>
             </div>

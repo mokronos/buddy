@@ -56,23 +56,15 @@ export const ManagedAgentLogsResponseSchema = z.object({
 
 export const RuntimeAgentConfigSchema = z.object({
   agent: z.object({
-    id: z.string(),
     name: z.string(),
     instructions: z.string(),
     model: z.string(),
   }),
-  a2a: z.object({
-    port: z.number(),
-    mount_path: z.string(),
-  }),
-  tools: z.object({
-    web_search: z.boolean(),
-    todo: z.boolean(),
-  }),
-  mcp: z.object({
-    enabled: z.boolean(),
-    url: z.string(),
-  }),
+  mcp_servers: z.array(
+    z.object({
+      url: z.string(),
+    }),
+  ),
 });
 
 export const ManagedAgentConfigResponseSchema = z.object({

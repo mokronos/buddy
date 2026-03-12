@@ -81,9 +81,6 @@ def test_update_agent_config_without_restart_keeps_active_runtime_settings(tmp_p
   name: Demo Agent
   instructions: "You are helpful"
   model: openrouter:openrouter/free
-a2a:
-  port: 8000
-  mount_path: /a2a
 """,
         encoding="utf-8",
     )
@@ -117,9 +114,6 @@ a2a:
   name: Demo Agent
   instructions: "Updated"
   model: openrouter:openrouter/free
-a2a:
-  port: 9000
-  mount_path: /rpc
 """,
         restart=False,
     )

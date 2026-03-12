@@ -4,7 +4,11 @@ from typing import cast
 
 from buddy.runtime.a2a.server import create_runtime_app
 from buddy.runtime.config import build_runtime_agents
-from buddy.shared.runtime_config import load_runtime_agent_config
+from buddy.shared.runtime_config import (
+    DEFAULT_RUNTIME_A2A_MOUNT_PATH,
+    DEFAULT_RUNTIME_A2A_PORT,
+    load_runtime_agent_config,
+)
 from pydantic_ai import Agent
 
 runtime_config_path = os.environ.get("BUDDY_AGENT_CONFIG")
@@ -15,12 +19,12 @@ runtime_config = load_runtime_agent_config(Path(runtime_config_path))
 runtime_agents = build_runtime_agents(runtime_config)
 app = create_runtime_app(
     cast(dict[str, Agent], runtime_agents),
-    port=runtime_config.a2a.port,
-    mount_path=runtime_config.a2a.mount_path,
+    port=DEFAULT_RUNTIME_A2A_PORT,
+    mount_path=DEFAULT_RUNTIME_A2A_MOUNT_PATH,
 )
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=runtime_config.a2a.port)
+    uvicorn.run(app, host="0.0.0.0", port=DEFAULT_RUNTIME_A2A_PORT)

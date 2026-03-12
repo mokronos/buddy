@@ -131,7 +131,6 @@ function ManagedAgentCard(props: {
             <div class="mt-4 grid gap-3">
               <ManagedConfigFields
                 config={config()}
-                disableAgentId
                 onChange={(nextConfig) => props.onEditingConfigChange(nextConfig)}
               />
               <FeedbackAlert feedback={props.editFeedback} />

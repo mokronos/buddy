@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/solid-query";
-import { createSignal, onMount } from "solid-js";
+import { createEffect, createSignal, onMount } from "solid-js";
 import { listExternalAgents } from "~/a2a/externalAgents";
 import { listManagedAgents } from "~/a2a/managedAgents";
 import ManagedAgentCreateSection from "~/components/managed-agents/ManagedAgentCreateSection";
 import ManagedAgentsSection from "~/components/managed-agents/ManagedAgentsSection";
+import ToastViewport from "~/components/managed-agents/ToastViewport";
+import type { ToastInput, ToastMessage } from "~/components/managed-agents/types";
 import { useExternalAgentsAdmin } from "~/components/managed-agents/useExternalAgentsAdmin";
 import { useManagedAgentsAdmin } from "~/components/managed-agents/useManagedAgentsAdmin";
 import TopTabs from "~/components/TopTabs";
@@ -25,6 +27,10 @@ export default function ManagedAgentsPage() {
   }));
 
   const [isClientReady, setIsClientReady] = createSignal(false);
+  const [toasts, setToasts] = createSignal<ToastMessage[]>([]);
+  const [lastManagedQueryError, setLastManagedQueryError] = createSignal<string | null>(null);
+  const [lastExternalQueryError, setLastExternalQueryError] = createSignal<string | null>(null);
+  let toastCounter = 0;
 
   onMount(() => setIsClientReady(true));
 
@@ -36,6 +42,41 @@ export default function ManagedAgentsPage() {
     managedAgentsQuery.error instanceof Error ? managedAgentsQuery.error.message : null;
   const externalQueryErrorMessage = () =>
     externalAgentsQuery.error instanceof Error ? externalAgentsQuery.error.message : null;
+
+  const notify = (toast: ToastInput): void => {
+    const id = toastCounter;
+    toastCounter += 1;
+    setToasts((current) => [...current, { id, ...toast }]);
+    setTimeout(() => {
+      setToasts((current) => current.filter((item) => item.id !== id));
+    }, 4000);
+  };
+
+  createEffect(() => {
+    const message = managedQueryErrorMessage();
+    if (!message) {
+      setLastManagedQueryError(null);
+      return;
+    }
+    if (message === lastManagedQueryError()) {
+      return;
+    }
+    setLastManagedQueryError(message);
+    notify({ kind: "error", message });
+  });
+
+  createEffect(() => {
+    const message = externalQueryErrorMessage();
+    if (!message) {
+      setLastExternalQueryError(null);
+      return;
+    }
+    if (message === lastExternalQueryError()) {
+      return;
+    }
+    setLastExternalQueryError(message);
+    notify({ kind: "error", message });
+  });
 
   const syncAgentQueries = async (): Promise<void> => {
     await Promise.all([managedAgentsQuery.refetch(), externalAgentsQuery.refetch()]);
@@ -57,8 +98,9 @@ export default function ManagedAgentsPage() {
   const managedAdmin = useManagedAgentsAdmin({
     syncAgentQueries,
     waitForManagedAgentRemoval,
+    notify,
   });
-  const externalAdmin = useExternalAgentsAdmin({ syncAgentQueries });
+  const externalAdmin = useExternalAgentsAdmin({ syncAgentQueries, notify });
 
   return (
     <main class="flex h-screen flex-col overflow-hidden">
@@ -70,12 +112,10 @@ export default function ManagedAgentsPage() {
             onFormChange={managedAdmin.setCreateManagedForm}
             onSubmit={managedAdmin.createAgent}
             isSubmitting={managedAdmin.createManagedMutation.isPending}
-            feedback={managedAdmin.managedCreateFeedback()}
             externalAgentId={externalAdmin.externalAgentId()}
             externalAgentUrl={externalAdmin.externalAgentUrl()}
             externalUseLegacyCardPath={externalAdmin.externalUseLegacyCardPath()}
             isExternalSubmitting={externalAdmin.createExternalMutation.isPending}
-            externalFeedback={externalAdmin.externalCreateFeedback()}
             onExternalAgentIdChange={externalAdmin.setExternalAgentId}
             onExternalAgentUrlChange={externalAdmin.setExternalAgentUrl}
             onExternalUseLegacyCardPathChange={externalAdmin.setExternalUseLegacyCardPath}
@@ -86,11 +126,6 @@ export default function ManagedAgentsPage() {
             managedAgents={managedAgents()}
             externalAgents={externalAgents()}
             shouldShowLoading={shouldShowLoading()}
-            managedListFeedback={managedAdmin.managedListFeedback()}
-            externalListFeedback={externalAdmin.externalListFeedback()}
-            listErrorMessage={managedQueryErrorMessage() ?? externalQueryErrorMessage()}
-            managedEditFeedback={managedAdmin.managedEditFeedback()}
-            externalEditFeedback={externalAdmin.externalEditFeedback()}
             editingManagedAgentId={managedAdmin.editingManagedAgentId()}
             editingExternalAgentId={externalAdmin.editingExternalAgentId()}
             editingManagedConfig={managedAdmin.editingManagedConfig()}
@@ -134,6 +169,7 @@ export default function ManagedAgentsPage() {
           />
         </div>
       </div>
+      <ToastViewport toasts={toasts()} />
     </main>
   );
 }

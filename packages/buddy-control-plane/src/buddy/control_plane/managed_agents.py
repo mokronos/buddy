@@ -511,7 +511,12 @@ class ManagedAgentManager:
         host_port = int(bindings[0]["HostPort"])
 
         try:
-            self._wait_for_a2a_ready(record.agent_id, host_port, DEFAULT_RUNTIME_A2A_MOUNT_PATH)
+            self._wait_for_a2a_ready(
+                record.agent_id,
+                host_port,
+                DEFAULT_RUNTIME_A2A_MOUNT_PATH,
+                container=container,
+            )
         except Exception as error:
             if created_container:
                 container.remove(force=True)
@@ -642,12 +647,24 @@ class ManagedAgentManager:
         if config.agent.id != agent_id:
             raise ValueError(f"Config agent.id ('{config.agent.id}') must match managed agent id ('{agent_id}')")
 
-    def _wait_for_a2a_ready(self, agent_id: str, host_port: int, mount_path: str) -> None:
+    def _wait_for_a2a_ready(self, agent_id: str, host_port: int, mount_path: str, *, container=None) -> None:
         base_url = f"http://127.0.0.1:{host_port}"
         agent_card_url = f"{base_url}{runtime_agent_card_path(mount_path)}"
         delay = 0.2
         max_attempts = 30
         for _ in range(max_attempts):
+            if container is not None:
+                try:
+                    container.reload()
+                    if container.status in {"exited", "dead"}:
+                        logs = self._container_log_excerpt(container)
+                        if logs:
+                            raise RuntimeError(
+                                f"Managed agent '{agent_id}' container exited before readiness; recent logs:\n{logs}"
+                            )
+                        raise RuntimeError(f"Managed agent '{agent_id}' container exited before readiness")
+                except NotFound:
+                    raise RuntimeError(f"Managed agent '{agent_id}' container disappeared before readiness") from None
             try:
                 card_response = requests.get(agent_card_url, timeout=2)
                 if card_response.ok:
@@ -658,7 +675,25 @@ class ManagedAgentManager:
                 pass
             sleep(delay)
             delay = min(delay * 2, 2.0)
+        if container is not None:
+            logs = self._container_log_excerpt(container)
+            if logs:
+                raise RuntimeError(
+                    f"Managed agent '{agent_id}' failed readiness check at {agent_card_url}; recent logs:\n{logs}"
+                )
         raise RuntimeError(f"Managed agent '{agent_id}' failed readiness check at {agent_card_url}")
+
+    @staticmethod
+    def _container_log_excerpt(container, tail: int = 80, max_chars: int = 6000) -> str | None:
+        try:
+            raw_logs = container.logs(tail=tail).decode("utf-8", errors="replace").strip()
+        except Exception:
+            return None
+        if not raw_logs:
+            return None
+        if len(raw_logs) > max_chars:
+            return f"...{raw_logs[-max_chars:]}"
+        return raw_logs
 
     def _save_registry(self) -> None:
         save_json_registry(self._registry_path, self._records)

@@ -116,7 +116,22 @@ def build_agents_router(state: ServerState) -> APIRouter:
     @router.get("/agents/managed")
     async def list_managed_agents() -> JSONResponse:
         agents_payload = await run_in_threadpool(state.managed_agent_manager.list_agents)
-        return JSONResponse({"agents": [record.__dict__ for record in agents_payload]})
+        enriched_agents: list[dict[str, object]] = []
+        for record in agents_payload:
+            config_payload: dict[str, object] | None = None
+            try:
+                config_yaml = await run_in_threadpool(state.managed_agent_manager.get_agent_config, record.agent_id)
+                config_payload = to_user_runtime_agent_config(parse_runtime_agent_config_yaml(config_yaml)).model_dump(
+                    mode="json"
+                )
+            except ValueError:
+                config_payload = None
+
+            payload = {**record.__dict__}
+            payload["config"] = config_payload
+            enriched_agents.append(payload)
+
+        return JSONResponse({"agents": enriched_agents})
 
     @router.get("/agents/managed/{agent_id}")
     async def get_managed_agent(agent_id: str) -> JSONResponse:

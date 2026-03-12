@@ -39,6 +39,7 @@ export const ManagedAgentSchema = z.object({
   last_error: StringOrNullSchema,
   created_at: z.string(),
   updated_at: z.string(),
+  config: z.lazy(() => RuntimeAgentConfigSchema).nullable().optional(),
 });
 
 export const ListManagedAgentsResponseSchema = z.object({

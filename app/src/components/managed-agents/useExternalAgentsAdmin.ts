@@ -6,16 +6,14 @@ import {
   updateExternalAgent,
   type ExternalAgent,
 } from "~/a2a/externalAgents";
-import type { FeedbackState } from "~/components/managed-agents/types";
+import type { ToastInput } from "~/components/managed-agents/types";
 
 interface UseExternalAgentsAdminOptions {
   syncAgentQueries: () => Promise<void>;
+  notify: (toast: ToastInput) => void;
 }
 
 export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
-  const [externalCreateFeedback, setExternalCreateFeedback] = createSignal<FeedbackState>(null);
-  const [externalListFeedback, setExternalListFeedback] = createSignal<FeedbackState>(null);
-  const [externalEditFeedback, setExternalEditFeedback] = createSignal<FeedbackState>(null);
   const [externalAgentId, setExternalAgentId] = createSignal("");
   const [externalAgentUrl, setExternalAgentUrl] = createSignal("");
   const [externalUseLegacyCardPath, setExternalUseLegacyCardPath] = createSignal(false);
@@ -33,24 +31,17 @@ export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
       }),
   }));
 
-  const clearExternalFeedback = (): void => {
-    setExternalCreateFeedback(null);
-    setExternalListFeedback(null);
-    setExternalEditFeedback(null);
-  };
-
   const addExternalAgent = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
-    clearExternalFeedback();
 
     const trimmedAgentId = externalAgentId().trim();
     const trimmedAgentUrl = externalAgentUrl().trim();
     if (trimmedAgentId.length === 0) {
-      setExternalCreateFeedback({ kind: "error", message: "External agent id is required" });
+      props.notify({ kind: "error", message: "External agent id is required" });
       return;
     }
     if (trimmedAgentUrl.length === 0) {
-      setExternalCreateFeedback({ kind: "error", message: "External agent URL is required" });
+      props.notify({ kind: "error", message: "External agent URL is required" });
       return;
     }
 
@@ -60,7 +51,7 @@ export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
         base_url: trimmedAgentUrl,
         use_legacy_card_path: externalUseLegacyCardPath(),
       });
-      setExternalCreateFeedback({
+      props.notify({
         kind: "success",
         message: `Added external agent '${trimmedAgentId}'`,
       });
@@ -69,7 +60,7 @@ export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
       setExternalUseLegacyCardPath(false);
       await props.syncAgentQueries();
     } catch (error) {
-      setExternalCreateFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to add external agent",
       });
@@ -77,16 +68,15 @@ export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
   };
 
   const removeExternalAgent = async (agentId: string): Promise<void> => {
-    clearExternalFeedback();
     try {
       await deleteExternalMutation.mutateAsync(agentId);
-      setExternalListFeedback({
+      props.notify({
         kind: "success",
         message: `Deleted external agent '${agentId}'`,
       });
       await props.syncAgentQueries();
     } catch (error) {
-      setExternalListFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to delete external agent",
       });
@@ -94,7 +84,6 @@ export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
   };
 
   const beginEditExternalAgent = (externalAgent: ExternalAgent): void => {
-    clearExternalFeedback();
     setEditingExternalAgentId(externalAgent.agent_id);
     setEditingExternalAgentUrl(externalAgent.base_url);
     setEditingExternalUseLegacyCardPath(externalAgent.use_legacy_card_path);
@@ -104,16 +93,12 @@ export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
     setEditingExternalAgentId(null);
     setEditingExternalAgentUrl("");
     setEditingExternalUseLegacyCardPath(false);
-    setExternalEditFeedback(null);
   };
 
   const saveExternalAgentEdit = async (agentId: string): Promise<void> => {
-    setExternalListFeedback(null);
-    setExternalEditFeedback(null);
-
     const trimmedUrl = editingExternalAgentUrl().trim();
     if (trimmedUrl.length === 0) {
-      setExternalEditFeedback({ kind: "error", message: "External agent URL is required" });
+      props.notify({ kind: "error", message: "External agent URL is required" });
       return;
     }
 
@@ -123,14 +108,14 @@ export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
         base_url: trimmedUrl,
         use_legacy_card_path: editingExternalUseLegacyCardPath(),
       });
-      setExternalListFeedback({
+      props.notify({
         kind: "success",
         message: `Updated external agent '${agentId}'`,
       });
       cancelEditExternalAgent();
       await props.syncAgentQueries();
     } catch (error) {
-      setExternalEditFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to update external agent",
       });
@@ -138,9 +123,6 @@ export function useExternalAgentsAdmin(props: UseExternalAgentsAdminOptions) {
   };
 
   return {
-    externalCreateFeedback,
-    externalListFeedback,
-    externalEditFeedback,
     externalAgentId,
     setExternalAgentId,
     externalAgentUrl,

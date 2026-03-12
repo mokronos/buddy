@@ -1,6 +1,5 @@
 import { Show, createSignal } from "solid-js";
-import type { ManagedCreateFormState, FeedbackState } from "~/components/managed-agents/types";
-import FeedbackAlert from "~/components/managed-agents/FeedbackAlert";
+import type { ManagedCreateFormState } from "~/components/managed-agents/types";
 import ManagedConfigFields from "~/components/managed-agents/ManagedConfigFields";
 
 export default function ManagedAgentCreateSection(props: {
@@ -8,12 +7,10 @@ export default function ManagedAgentCreateSection(props: {
   onFormChange: (nextForm: ManagedCreateFormState) => void;
   onSubmit: (event: SubmitEvent) => void | Promise<void>;
   isSubmitting: boolean;
-  feedback: FeedbackState;
   externalAgentId: string;
   externalAgentUrl: string;
   externalUseLegacyCardPath: boolean;
   isExternalSubmitting: boolean;
-  externalFeedback: FeedbackState;
   onExternalAgentIdChange: (value: string) => void;
   onExternalAgentUrlChange: (value: string) => void;
   onExternalUseLegacyCardPathChange: (value: boolean) => void;
@@ -71,7 +68,6 @@ export default function ManagedAgentCreateSection(props: {
                 "Add"
               )}
             </button>
-            <FeedbackAlert feedback={props.feedback} />
           </form>
         </Show>
 
@@ -108,7 +104,6 @@ export default function ManagedAgentCreateSection(props: {
                 "Add"
               )}
             </button>
-            <FeedbackAlert feedback={props.externalFeedback} />
           </form>
         </Show>
       </div>

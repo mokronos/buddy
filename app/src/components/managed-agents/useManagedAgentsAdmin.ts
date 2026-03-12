@@ -14,17 +14,15 @@ import {
   normalizeRuntimeConfig,
   validateRuntimeConfig,
 } from "~/components/managed-agents/runtimeConfig";
-import type { FeedbackState, ManagedCreateFormState } from "~/components/managed-agents/types";
+import type { ManagedCreateFormState, ToastInput } from "~/components/managed-agents/types";
 
 interface UseManagedAgentsAdminOptions {
   syncAgentQueries: () => Promise<void>;
   waitForManagedAgentRemoval: (managedAgentId: string) => Promise<boolean>;
+  notify: (toast: ToastInput) => void;
 }
 
 export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
-  const [managedCreateFeedback, setManagedCreateFeedback] = createSignal<FeedbackState>(null);
-  const [managedListFeedback, setManagedListFeedback] = createSignal<FeedbackState>(null);
-  const [managedEditFeedback, setManagedEditFeedback] = createSignal<FeedbackState>(null);
   const [createManagedForm, setCreateManagedForm] = createSignal<ManagedCreateFormState>(createDefaultManagedForm());
   const [editingManagedAgentId, setEditingManagedAgentId] = createSignal<string | null>(null);
   const [editingManagedConfig, setEditingManagedConfig] = createSignal<RuntimeAgentConfigPayload | null>(null);
@@ -43,12 +41,6 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
       }),
   }));
 
-  const clearManagedFeedback = (): void => {
-    setManagedCreateFeedback(null);
-    setManagedListFeedback(null);
-    setManagedEditFeedback(null);
-  };
-
   const isDeletingManagedAgent = (managedAgentId: string): boolean =>
     deletingManagedAgentIds().some((id) => id === managedAgentId);
 
@@ -64,13 +56,12 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
 
   const createAgent = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
-    clearManagedFeedback();
 
     const nextForm = createManagedForm();
     const normalizedConfig = normalizeRuntimeConfig(nextForm.config);
     const validationError = validateRuntimeConfig(normalizedConfig);
     if (validationError) {
-      setManagedCreateFeedback({ kind: "error", message: validationError });
+      props.notify({ kind: "error", message: validationError });
       return;
     }
 
@@ -80,14 +71,14 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
       const createdAgent = await createManagedMutation.mutateAsync({
         config: normalizedConfig,
       });
-      setManagedCreateFeedback({
+      props.notify({
         kind: "success",
         message: `Created agent '${createdAgent.agent_id}'`,
       });
       setCreateManagedForm(createDefaultManagedForm());
       await props.syncAgentQueries();
     } catch (error) {
-      setManagedCreateFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to create agent",
       });
@@ -95,16 +86,15 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
   };
 
   const startAgent = async (managedAgentId: string): Promise<void> => {
-    clearManagedFeedback();
     try {
       await startManagedMutation.mutateAsync(managedAgentId);
-      setManagedListFeedback({
+      props.notify({
         kind: "success",
         message: `Started agent '${managedAgentId}'`,
       });
       await props.syncAgentQueries();
     } catch (error) {
-      setManagedListFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to start agent",
       });
@@ -112,16 +102,15 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
   };
 
   const stopAgent = async (managedAgentId: string): Promise<void> => {
-    clearManagedFeedback();
     try {
       await stopManagedMutation.mutateAsync(managedAgentId);
-      setManagedListFeedback({
+      props.notify({
         kind: "success",
         message: `Stopped agent '${managedAgentId}'`,
       });
       await props.syncAgentQueries();
     } catch (error) {
-      setManagedListFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to stop agent",
       });
@@ -133,7 +122,6 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
       return;
     }
 
-    clearManagedFeedback();
     addDeletingManagedAgent(managedAgentId);
     try {
       await deleteManagedMutation.mutateAsync(managedAgentId);
@@ -143,12 +131,12 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
       }
 
       await props.syncAgentQueries();
-      setManagedListFeedback({
+      props.notify({
         kind: "success",
         message: `Deleted agent '${managedAgentId}'`,
       });
     } catch (error) {
-      setManagedListFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to delete agent",
       });
@@ -158,14 +146,13 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
   };
 
   const beginEditManagedAgent = async (managedAgentId: string): Promise<void> => {
-    clearManagedFeedback();
     try {
       const loadedConfig = await getManagedAgentConfig(managedAgentId);
       setEditingManagedAgentId(managedAgentId);
       setEditingManagedConfig(normalizeRuntimeConfig(loadedConfig));
       setRestartManagedAfterConfigSave(true);
     } catch (error) {
-      setManagedListFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to load managed agent config",
       });
@@ -176,23 +163,19 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
     setEditingManagedAgentId(null);
     setEditingManagedConfig(null);
     setRestartManagedAfterConfigSave(true);
-    setManagedEditFeedback(null);
   };
 
   const saveManagedAgentConfig = async (managedAgentId: string): Promise<void> => {
-    setManagedListFeedback(null);
-    setManagedEditFeedback(null);
-
     const nextConfig = editingManagedConfig();
     if (!nextConfig) {
-      setManagedEditFeedback({ kind: "error", message: "No config loaded for editing" });
+      props.notify({ kind: "error", message: "No config loaded for editing" });
       return;
     }
 
     const normalizedConfig = normalizeRuntimeConfig(nextConfig);
     const validationError = validateRuntimeConfig(normalizedConfig);
     if (validationError) {
-      setManagedEditFeedback({ kind: "error", message: validationError });
+      props.notify({ kind: "error", message: validationError });
       return;
     }
 
@@ -204,14 +187,14 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
         config: normalizedConfig,
         restart: restartManagedAfterConfigSave(),
       });
-      setManagedListFeedback({
+      props.notify({
         kind: "success",
         message: `Updated config for managed agent '${managedAgentId}'`,
       });
       cancelEditManagedAgent();
       await props.syncAgentQueries();
     } catch (error) {
-      setManagedEditFeedback({
+      props.notify({
         kind: "error",
         message: error instanceof Error ? error.message : "Failed to update managed agent config",
       });
@@ -219,9 +202,6 @@ export function useManagedAgentsAdmin(props: UseManagedAgentsAdminOptions) {
   };
 
   return {
-    managedCreateFeedback,
-    managedListFeedback,
-    managedEditFeedback,
     createManagedForm,
     setCreateManagedForm,
     editingManagedAgentId,

@@ -2,9 +2,7 @@ import { For, Show } from "solid-js";
 import type { ExternalAgent } from "~/a2a/externalAgents";
 import type { ManagedAgent } from "~/a2a/managedAgents";
 import type { RuntimeAgentConfigPayload } from "~/a2a/schemas";
-import FeedbackAlert from "~/components/managed-agents/FeedbackAlert";
 import ManagedConfigFields from "~/components/managed-agents/ManagedConfigFields";
-import type { FeedbackState } from "~/components/managed-agents/types";
 import Skeleton from "~/components/ui/Skeleton";
 
 function ManagedAgentsLoadingState() {
@@ -54,7 +52,6 @@ function ManagedAgentCard(props: {
   isDeleting: boolean;
   isEditing: boolean;
   editingConfig: RuntimeAgentConfigPayload | null;
-  editFeedback: FeedbackState;
   restartAfterSave: boolean;
   isSavingEdit: boolean;
   onStart: (agentId: string) => void;
@@ -66,37 +63,64 @@ function ManagedAgentCard(props: {
   onSaveEdit: (agentId: string) => void;
   onCancelEdit: () => void;
 }) {
+  const shortModel = (): string => {
+    const model = props.agent.config?.agent.model ?? "";
+    if (model.length <= 40) {
+      return model;
+    }
+    return `${model.slice(0, 40)}...`;
+  };
+
+  const mcpCount = (): number => props.agent.config?.mcp_servers.length ?? 0;
+
+  const instructionPreview = (): string => {
+    const instructions = props.agent.config?.agent.instructions ?? "";
+    if (instructions.length <= 180) {
+      return instructions;
+    }
+    return `${instructions.slice(0, 180)}...`;
+  };
+
   return (
-    <article class="card border border-base-300 bg-base-200 shadow-sm">
-      <div class="card-body p-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p class="font-medium">{props.agent.agent_id}</p>
-            <p class="text-xs text-base-content/60">{props.agent.image}</p>
+    <article class="card border border-base-300 bg-base-100 shadow-sm transition-shadow hover:shadow-md">
+      <div class="card-body gap-3 p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h3 class="card-title truncate text-base">{props.agent.config?.agent.name ?? props.agent.agent_id}</h3>
+            <p class="truncate text-xs text-base-content/60">{props.agent.agent_id}</p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex shrink-0 items-center gap-2">
             <span class="badge badge-primary badge-outline">managed</span>
             <span class={`badge badge-outline ${props.isDeleting ? "badge-warning" : "badge-neutral"}`}>
               {props.isDeleting ? "deleting" : props.agent.status}
             </span>
           </div>
         </div>
-        <div class="mt-2 grid gap-1 text-xs text-base-content/60 md:grid-cols-2">
-          <p>container: {props.agent.container_id ?? "-"}</p>
-          <p>host port: {props.agent.host_port ?? "-"}</p>
-          <p>runtime port: {props.agent.container_port}</p>
-          <p>runtime path: {props.agent.a2a_mount_path}</p>
-          <p>config mount: {props.agent.config_mount_path}</p>
-          <p>config file: {props.agent.config_path}</p>
-          {props.agent.last_error ? <p class="text-error md:col-span-2">error: {props.agent.last_error}</p> : null}
+
+        <div class="flex flex-wrap gap-2 text-xs">
+          <Show when={shortModel().length > 0} fallback={<span class="badge badge-ghost">model: -</span>}>
+            <span class="badge badge-ghost">model: {shortModel()}</span>
+          </Show>
+          <span class="badge badge-ghost">mcp: {mcpCount()}</span>
+        </div>
+
+        <div class="grid gap-2 text-xs text-base-content/70">
+          <Show when={instructionPreview().length > 0}>
+            <div class="rounded-box border border-base-300 bg-base-200/60 px-3 py-2">
+              <p class="font-medium text-base-content/80">Instructions</p>
+              <p class="mt-1 leading-relaxed">{instructionPreview()}</p>
+            </div>
+          </Show>
+          {props.agent.last_error ? <p class="rounded-box bg-error/10 px-3 py-2 text-error">{props.agent.last_error}</p> : null}
           {props.isDeleting ? (
-            <p class="inline-flex items-center gap-2 text-warning md:col-span-2">
+            <p class="inline-flex items-center gap-2 text-warning">
               <span class="loading loading-spinner loading-xs" />
               Waiting for container shutdown...
             </p>
           ) : null}
         </div>
-        <div class="join mt-3 flex flex-wrap">
+
+        <div class="join flex flex-wrap">
           <button
             type="button"
             disabled={props.isDeleting}
@@ -132,12 +156,11 @@ function ManagedAgentCard(props: {
         </div>
         <Show when={props.isEditing && props.editingConfig}>
           {(config) => (
-            <div class="mt-4 grid gap-3">
+            <div class="mt-1 grid gap-3 rounded-box border border-base-300 bg-base-200/60 p-3">
               <ManagedConfigFields
                 config={config()}
                 onChange={(nextConfig) => props.onEditingConfigChange(nextConfig)}
               />
-              <FeedbackAlert feedback={props.editFeedback} />
               <label class="label cursor-pointer justify-start gap-3">
                 <input
                   type="checkbox"
@@ -154,7 +177,14 @@ function ManagedAgentCard(props: {
                   class="btn btn-sm btn-primary join-item"
                   onClick={() => props.onSaveEdit(props.agent.agent_id)}
                 >
-                  Save Config
+                  {props.isSavingEdit ? (
+                    <>
+                      <span class="loading loading-spinner loading-xs" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save"
+                  )}
                 </button>
                 <button
                   type="button"
@@ -176,7 +206,6 @@ function ManagedAgentCard(props: {
 function ExternalAgentCard(props: {
   agent: ExternalAgent;
   isEditing: boolean;
-  editFeedback: FeedbackState;
   isUpdating: boolean;
   editingExternalAgentUrl: string;
   editingExternalUseLegacyCardPath: boolean;
@@ -188,26 +217,28 @@ function ExternalAgentCard(props: {
   onCancelEdit: () => void;
 }) {
   return (
-    <article class="card border border-base-300 bg-base-200 shadow-sm">
-      <div class="card-body p-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p class="font-medium">{props.agent.agent_id}</p>
-            <p class="text-xs text-base-content/60">{props.agent.base_url}</p>
+    <article class="card border border-base-300 bg-base-100 shadow-sm transition-shadow hover:shadow-md">
+      <div class="card-body gap-3 p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h3 class="card-title truncate text-base">{props.agent.agent_id}</h3>
+            <p class="truncate text-xs text-base-content/60">{props.agent.base_url}</p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex shrink-0 items-center gap-2">
             <span class="badge badge-secondary badge-outline">external</span>
             <span class="badge badge-neutral badge-outline">registered</span>
           </div>
         </div>
-        <div class="mt-2 text-xs text-base-content/60">
-          <p>proxy: /a2a/external/{props.agent.agent_id}</p>
-          <p>card path: {props.agent.use_legacy_card_path ? "legacy" : "standard"}</p>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="badge badge-ghost">
+            legacy card path: {props.agent.use_legacy_card_path ? "enabled" : "disabled"}
+          </span>
         </div>
+
         <Show
           when={props.isEditing}
           fallback={
-            <div class="join mt-3 flex flex-wrap">
+            <div class="join flex flex-wrap">
               <button type="button" class="btn btn-sm join-item" onClick={() => props.onBeginEdit(props.agent)}>
                 Edit
               </button>
@@ -221,13 +252,12 @@ function ExternalAgentCard(props: {
             </div>
           }
         >
-          <div class="mt-3 grid gap-2">
+          <div class="grid gap-2 rounded-box border border-base-300 bg-base-200/60 p-3">
             <input
               class="input input-bordered w-full text-xs"
               value={props.editingExternalAgentUrl}
               onInput={(event) => props.onEditingExternalAgentUrlChange(event.currentTarget.value)}
             />
-            <FeedbackAlert feedback={props.editFeedback} />
             <label class="label cursor-pointer justify-start gap-3">
               <input
                 type="checkbox"
@@ -244,7 +274,14 @@ function ExternalAgentCard(props: {
                 class="btn btn-sm btn-primary join-item"
                 onClick={() => props.onSaveEdit(props.agent.agent_id)}
               >
-                Save
+                {props.isUpdating ? (
+                  <>
+                    <span class="loading loading-spinner loading-xs" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save"
+                )}
               </button>
               <button type="button" class="btn btn-sm join-item" onClick={props.onCancelEdit}>
                 Cancel
@@ -261,11 +298,6 @@ export default function ManagedAgentsSection(props: {
   managedAgents: ManagedAgent[];
   externalAgents: ExternalAgent[];
   shouldShowLoading: boolean;
-  managedListFeedback: FeedbackState;
-  externalListFeedback: FeedbackState;
-  listErrorMessage: string | null;
-  managedEditFeedback: FeedbackState;
-  externalEditFeedback: FeedbackState;
   editingManagedAgentId: string | null;
   editingExternalAgentId: string | null;
   editingManagedConfig: RuntimeAgentConfigPayload | null;
@@ -291,7 +323,6 @@ export default function ManagedAgentsSection(props: {
   onSaveExternalEdit: (agentId: string) => void;
   onCancelExternalEdit: () => void;
 }) {
-  const listFeedback = (): FeedbackState => props.managedListFeedback ?? props.externalListFeedback;
   const totalAgents = (): number => props.managedAgents.length + props.externalAgents.length;
 
   return (
@@ -304,11 +335,6 @@ export default function ManagedAgentsSection(props: {
           </button>
         </div>
 
-        <FeedbackAlert
-          feedback={listFeedback() ?? (props.listErrorMessage ? { kind: "error", message: props.listErrorMessage } : null)}
-          class="mb-3"
-        />
-
         <div class="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-1">
           <Show when={props.shouldShowLoading && totalAgents() === 0}>
             <ManagedAgentsLoadingState />
@@ -320,7 +346,6 @@ export default function ManagedAgentsSection(props: {
                 isDeleting={props.isDeletingManagedAgent(agent.agent_id)}
                 isEditing={props.editingManagedAgentId === agent.agent_id}
                 editingConfig={props.editingManagedConfig}
-                editFeedback={props.managedEditFeedback}
                 restartAfterSave={props.restartAfterSave}
                 isSavingEdit={props.isSavingManagedEdit}
                 onStart={props.onStartManaged}
@@ -339,7 +364,6 @@ export default function ManagedAgentsSection(props: {
               <ExternalAgentCard
                 agent={agent}
                 isEditing={props.editingExternalAgentId === agent.agent_id}
-                editFeedback={props.externalEditFeedback}
                 isUpdating={props.isSavingExternalEdit}
                 editingExternalAgentUrl={props.editingExternalAgentUrl}
                 editingExternalUseLegacyCardPath={props.editingExternalUseLegacyCardPath}

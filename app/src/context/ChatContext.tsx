@@ -1,4 +1,3 @@
-import type { MessageSendParams } from "@a2a-js/sdk";
 import {
   createContext,
   createEffect,
@@ -9,7 +8,31 @@ import {
   type JSX,
   type Setter,
 } from "solid-js";
-import { createA2AClient, type A2AClient, type A2AStreamEvent } from "~/a2a/client";
+import { createA2AClient } from "~/a2a/client";
+import {
+  CANCELLATION_TIMEOUT_MESSAGE,
+  CANCEL_TIMEOUT_MS,
+  createTextMessageParams,
+  isAbortError,
+  isTaskNotCancelableError,
+  readDataParts,
+  readEventStatusState,
+  readEventTaskId,
+  readTextParts,
+  toPrettyText,
+} from "~/context/chatEvents";
+import {
+  buildAgentContextId,
+  buildRequestKey,
+  createWorkspace,
+  emptyConversation,
+  timestamp,
+  type ActiveChatRequest,
+  type AgentConversationState,
+  type AgentWorkspaceState,
+  upsertAIMessage,
+  upsertThinkingMessage,
+} from "~/context/chatState";
 import { useAgents } from "~/context/AgentsContext";
 import type { Message } from "~/data/sampleMessages";
 
@@ -26,245 +49,6 @@ interface ChatContextValue {
 }
 
 const ChatContext = createContext<ChatContextValue>();
-const CANCEL_TIMEOUT_MS = 5000;
-const CANCELLATION_TIMEOUT_MESSAGE = "Cancellation request timed out. The local stream was stopped.";
-
-function createTextMessageParams(text: string, contextId: string): MessageSendParams {
-  return {
-    message: {
-      kind: "message",
-      messageId: crypto.randomUUID(),
-      contextId,
-      role: "user",
-      parts: [{ kind: "text", text }],
-    },
-  };
-}
-
-function timestamp(): string {
-  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function toSlug(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug.length > 0 ? slug : "agent";
-}
-
-function buildAgentContextId(agentKey: string): string {
-  return `agent-${toSlug(agentKey)}--${crypto.randomUUID()}`;
-}
-
-function buildRequestKey(agentKey: string, taskId: string): string {
-  return `${agentKey}::${taskId}`;
-}
-
-function readTextParts(value: unknown): string {
-  if (!Array.isArray(value)) {
-    return "";
-  }
-
-  return value
-    .map((part) => {
-      if (!part || typeof part !== "object") {
-        return "";
-      }
-
-      const candidate = part as { kind?: unknown; text?: unknown };
-      return candidate.kind === "text" && typeof candidate.text === "string" ? candidate.text : "";
-    })
-    .filter((entry) => entry.length > 0)
-    .join("\n");
-}
-
-function readDataParts(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((part) => {
-      if (!part || typeof part !== "object") {
-        return null;
-      }
-
-      const candidate = part as { kind?: unknown; data?: unknown };
-      if (candidate.kind !== "data") {
-        return null;
-      }
-
-      if (!candidate.data || typeof candidate.data !== "object" || Array.isArray(candidate.data)) {
-        return null;
-      }
-
-      return candidate.data as Record<string, unknown>;
-    })
-    .filter((entry): entry is Record<string, unknown> => entry !== null);
-}
-
-function toPrettyText(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return JSON.stringify(value, null, 2);
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
-
-function isTaskNotCancelableError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const message = error.message.toLowerCase();
-  return (
-    error.name === "TaskNotCancelableError" ||
-    message.includes("task not cancelable") ||
-    message.includes("task cannot be canceled")
-  );
-}
-
-function readEventTaskId(event: A2AStreamEvent): string | null {
-  const payload = event as { taskId?: unknown; id?: unknown };
-  if (typeof payload.taskId === "string" && payload.taskId.length > 0) {
-    return payload.taskId;
-  }
-  if (event.kind === "task" && typeof payload.id === "string" && payload.id.length > 0) {
-    return payload.id;
-  }
-  return null;
-}
-
-function readEventStatusState(event: A2AStreamEvent): string | null {
-  if (event.kind === "status-update") {
-    const payload = event as { status?: { state?: unknown } };
-    return typeof payload.status?.state === "string" ? payload.status.state : null;
-  }
-  if (event.kind === "task") {
-    const payload = event as { status?: { state?: unknown } };
-    return typeof payload.status?.state === "string" ? payload.status.state : null;
-  }
-  return null;
-}
-
-interface AgentConversationState {
-  messages: Message[];
-  isSending: boolean;
-  isCancelling: boolean;
-  activeRequestTaskId: string | null;
-  contextId: string | null;
-  label: string;
-}
-
-interface AgentWorkspaceState {
-  tasks: Record<string, AgentConversationState>;
-  taskOrder: string[];
-  nextTaskNumber: number;
-}
-
-function emptyConversation(label: string, messages: Message[] = []): AgentConversationState {
-  return {
-    messages,
-    isSending: false,
-    isCancelling: false,
-    activeRequestTaskId: null,
-    contextId: null,
-    label,
-  };
-}
-
-interface ActiveChatRequest {
-  abortController: AbortController;
-  client: A2AClient;
-  requestTaskId: string | null;
-  cancelRequested: boolean;
-  cancellationConfirmed: boolean;
-  cancelState: "idle" | "requested" | "not-cancelable" | "timed-out" | "failed";
-  failureMessage: string | null;
-  cancelPromise: Promise<void> | null;
-}
-
-function createWorkspace(initialMessages: Message[] = []): AgentWorkspaceState {
-  const defaultTaskId = "task-1";
-  return {
-    tasks: {
-      [defaultTaskId]: emptyConversation("Task 1", initialMessages),
-    },
-    taskOrder: [defaultTaskId],
-    nextTaskNumber: 2,
-  };
-}
-
-function upsertAIMessage(
-  setMessages: Setter<Message[]>,
-  id: string,
-  content: string,
-  timestampValue: string,
-): void {
-  setMessages((current) => {
-    const existingIndex = current.findIndex((message) => message.id === id);
-
-    if (existingIndex === -1) {
-      return [
-        ...current,
-        {
-          id,
-          type: "ai",
-          content,
-          timestamp: timestampValue,
-        },
-      ];
-    }
-
-    const updated = [...current];
-    updated[existingIndex] = {
-      ...updated[existingIndex],
-      content,
-      type: "ai",
-    };
-    return updated;
-  });
-}
-
-function upsertThinkingMessage(
-  setMessages: Setter<Message[]>,
-  id: string,
-  content: string,
-  timestampValue: string,
-): void {
-  setMessages((current) => {
-    const existingIndex = current.findIndex((message) => message.id === id);
-
-    if (existingIndex === -1) {
-      return [
-        ...current,
-        {
-          id,
-          type: "thinking",
-          content,
-          timestamp: timestampValue,
-        },
-      ];
-    }
-
-    const updated = [...current];
-    updated[existingIndex] = {
-      ...updated[existingIndex],
-      content,
-      type: "thinking",
-    };
-    return updated;
-  });
-}
 
 export function ChatProvider(props: { children: JSX.Element; messages: Message[] }) {
   const { agents, activeAgentKey, refreshAgents } = useAgents();
@@ -272,48 +56,39 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
   const [activeTaskIds, setActiveTaskIds] = createSignal<Record<string, string>>({});
   const activeRequests = new Map<string, ActiveChatRequest>();
 
+  const readWorkspace = (agentKey: string): AgentWorkspaceState | null => workspaces()[agentKey] ?? null;
+  const readSelectedTaskId = (agentKey: string, workspace: AgentWorkspaceState | null): string =>
+    workspace ? activeTaskIds()[agentKey] ?? workspace.taskOrder[0] ?? "" : "";
+
   const messages = createMemo(() => {
     const activeKey = activeAgentKey();
-    const workspace = workspaces()[activeKey];
-    if (!workspace) {
-      return [];
-    }
-    const selectedTaskId = activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
-    return workspace.tasks[selectedTaskId]?.messages ?? [];
+    const workspace = readWorkspace(activeKey);
+    const selectedTaskId = readSelectedTaskId(activeKey, workspace);
+    return workspace?.tasks[selectedTaskId]?.messages ?? [];
   });
 
   const isSending = createMemo(() => {
     const activeKey = activeAgentKey();
-    const workspace = workspaces()[activeKey];
-    if (!workspace) {
-      return false;
-    }
-    const selectedTaskId = activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
-    return workspace.tasks[selectedTaskId]?.isSending ?? false;
+    const workspace = readWorkspace(activeKey);
+    const selectedTaskId = readSelectedTaskId(activeKey, workspace);
+    return workspace?.tasks[selectedTaskId]?.isSending ?? false;
   });
 
   const isCancelling = createMemo(() => {
     const activeKey = activeAgentKey();
-    const workspace = workspaces()[activeKey];
-    if (!workspace) {
-      return false;
-    }
-    const selectedTaskId = activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
-    return workspace.tasks[selectedTaskId]?.isCancelling ?? false;
+    const workspace = readWorkspace(activeKey);
+    const selectedTaskId = readSelectedTaskId(activeKey, workspace);
+    return workspace?.tasks[selectedTaskId]?.isCancelling ?? false;
   });
 
   const activeTaskId = createMemo(() => {
     const activeKey = activeAgentKey();
-    const workspace = workspaces()[activeKey];
-    if (!workspace) {
-      return "";
-    }
-    return activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
+    return readSelectedTaskId(activeKey, readWorkspace(activeKey));
   });
 
   const tasks = createMemo(() => {
     const activeKey = activeAgentKey();
-    const workspace = workspaces()[activeKey];
+    const workspace = readWorkspace(activeKey);
     if (!workspace) {
       return [];
     }
@@ -398,7 +173,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
 
   const setActiveTaskId = (taskId: string): void => {
     const targetAgentKey = activeAgentKey();
-    const workspace = workspaces()[targetAgentKey];
+    const workspace = readWorkspace(targetAgentKey);
     if (!workspace || !workspace.tasks[taskId]) {
       return;
     }
@@ -447,12 +222,12 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       return;
     }
 
-    const workspace = workspaces()[targetAgentKey];
+    const workspace = readWorkspace(targetAgentKey);
     if (!workspace) {
       return;
     }
 
-    const targetTaskId = activeTaskIds()[targetAgentKey] ?? workspace.taskOrder[0] ?? "";
+    const targetTaskId = readSelectedTaskId(targetAgentKey, workspace);
     const task = workspace.tasks[targetTaskId];
     if (!task?.isSending) {
       return;
@@ -520,8 +295,8 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       throw new Error("No A2A agents available. Start a managed agent first.");
     }
 
-    const targetWorkspace = workspaces()[targetAgentKey] ?? createWorkspace();
-    const targetTaskId = activeTaskIds()[targetAgentKey] ?? targetWorkspace.taskOrder[0] ?? "task-1";
+    const targetWorkspace = readWorkspace(targetAgentKey) ?? createWorkspace();
+    const targetTaskId = readSelectedTaskId(targetAgentKey, targetWorkspace) || "task-1";
     const activeContextId =
       (targetWorkspace.tasks[targetTaskId]?.contextId ?? null) ?? buildAgentContextId(targetAgentKey);
     const requestKey = buildRequestKey(targetAgentKey, targetTaskId);

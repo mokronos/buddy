@@ -11,6 +11,7 @@ _LOGGER_NAME = "buddy"
 _HANDLER_MARKER = "_buddy_structured_handler"
 _service_name = _LOGGER_NAME
 _request_id_var: ContextVar[str | None] = ContextVar("buddy_request_id", default=None)
+_LOG_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
 
 def configure_logging(service_name: str, level: str | int | None = None) -> logging.Logger:
@@ -26,8 +27,8 @@ def configure_logging(service_name: str, level: str | int | None = None) -> logg
     if handler is None:
         handler = logging.StreamHandler()
         setattr(handler, _HANDLER_MARKER, True)
-        handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt=_LOG_DATE_FORMAT))
     handler.setLevel(resolved_level)
     return logger
 

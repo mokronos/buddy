@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 from typing import Any, cast
 from uuid import uuid4
 
@@ -29,6 +30,17 @@ from pydantic_ai import (
 )
 
 
+@dataclass
+class ActiveExecution:
+    run_task: asyncio.Task[Any] | None
+    context_id: str
+    updater: TaskUpdater
+    writer: SessionEventWriter
+    cancellation_requested: bool = False
+    cancellation_status_emitted: bool = False
+    cancellation_transcript_written: bool = False
+
+
 class PyAIAgentExecutor(AgentExecutor):
     def __init__(
         self,
@@ -37,10 +49,29 @@ class PyAIAgentExecutor(AgentExecutor):
     ) -> None:
         self.agent = agent
         self.session_store = session_store
+        self._active_executions: dict[str, ActiveExecution] = {}
+
+    async def _emit_cancellation_status(self, execution: ActiveExecution) -> None:
+        if execution.cancellation_status_emitted:
+            return
+
+        cancel_message = "Request canceled by user."
+        try:
+            await execution.updater.cancel(new_agent_text_message(cancel_message))
+        except RuntimeError:
+            pass
+        execution.writer.append_status_update(TaskState.canceled, cancel_message, final=True)
+        execution.cancellation_status_emitted = True
+
+    def _append_cancellation_transcript(self, execution: ActiveExecution) -> None:
+        if execution.cancellation_transcript_written:
+            return
+
+        self.session_store.append_chat_message(execution.context_id, "assistant", "Request canceled.")
+        execution.cancellation_transcript_written = True
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         query = context.get_user_input()
-        print("\n\n\n Recieved new task with query: ", query, "\n")
         message = context.message
         if message is None:
             raise ValueError("Request context missing message")
@@ -51,6 +82,13 @@ class PyAIAgentExecutor(AgentExecutor):
 
         updater = TaskUpdater(event_queue, task.id, context_id)
         writer = SessionEventWriter(session_store=self.session_store, context_id=context_id, task_id=task.id)
+        execution = ActiveExecution(
+            run_task=None,
+            context_id=context_id,
+            updater=updater,
+            writer=writer,
+        )
+        self._active_executions[task.id] = execution
 
         msg_history = self.session_store.load_messages(context_id)
 
@@ -67,6 +105,8 @@ class PyAIAgentExecutor(AgentExecutor):
         cur_artifact_id = None
         thinking_artifact_id = None
         tool_calls: dict[str, dict[str, object | None]] = {}
+        langfuse = None
+        trace_span = None
         try:
             langfuse = get_client()
             trace_span = langfuse.start_span(name="buddy-a2a-request")
@@ -93,6 +133,7 @@ class PyAIAgentExecutor(AgentExecutor):
                     )
 
             run_task = asyncio.create_task(run_agent())
+            execution.run_task = run_task
 
             async with receive_stream:
                 async for event in receive_stream:
@@ -280,11 +321,22 @@ class PyAIAgentExecutor(AgentExecutor):
                         writer.append_status_update(TaskState.working, "Agent thinking ...")
 
             res = await run_task
+        except asyncio.CancelledError:
+            if execution.cancellation_requested:
+                self._append_cancellation_transcript(execution)
+                if trace_span is not None:
+                    trace_span.end()
+                if langfuse is not None:
+                    langfuse.flush()
+                return
+            raise
         except Exception as error:
             error_text = str(error)
             await updater.failed(new_agent_text_message(error_text))
             writer.append_status_update(TaskState.failed, error_text, final=True)
             raise RuntimeError(error_text) from error
+        finally:
+            self._active_executions.pop(task.id, None)
 
         if res is None:
             raise ValueError("Agent produced no result")
@@ -314,4 +366,40 @@ class PyAIAgentExecutor(AgentExecutor):
         writer.append_status_update(TaskState.completed, final=True)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        raise NotImplementedError("Cancellation is not supported yet")
+        task_id = context.task_id
+        if task_id is None:
+            raise ValueError("Request context missing task_id")
+        context_id = context.context_id
+        if context_id is None:
+            raise ValueError("Request context missing context_id")
+
+        execution = self._active_executions.get(task_id)
+        if execution is None:
+            task = context.current_task
+            if task is None or task.status.state in {
+                TaskState.completed,
+                TaskState.canceled,
+                TaskState.failed,
+                TaskState.rejected,
+            }:
+                raise RuntimeError("Task is not actively running")
+
+            fallback_execution = ActiveExecution(
+                run_task=None,
+                context_id=context_id,
+                updater=TaskUpdater(event_queue, task_id, context_id),
+                writer=SessionEventWriter(
+                    session_store=self.session_store,
+                    context_id=context_id,
+                    task_id=task_id,
+                ),
+                cancellation_requested=True,
+            )
+            await self._emit_cancellation_status(fallback_execution)
+            self._append_cancellation_transcript(fallback_execution)
+            return
+
+        execution.cancellation_requested = True
+        if execution.run_task is not None:
+            execution.run_task.cancel()
+        await self._emit_cancellation_status(execution)

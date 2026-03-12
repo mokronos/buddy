@@ -9,14 +9,16 @@ import {
   type JSX,
   type Setter,
 } from "solid-js";
-import { createA2AClient } from "~/a2a/client";
+import { createA2AClient, type A2AClient, type A2AStreamEvent } from "~/a2a/client";
 import { useAgents } from "~/context/AgentsContext";
 import type { Message } from "~/data/sampleMessages";
 
 interface ChatContextValue {
   messages: Accessor<Message[]>;
   sendMessage: (content: string) => Promise<void>;
+  cancelActiveRequest: () => Promise<void>;
   isSending: Accessor<boolean>;
+  isCancelling: Accessor<boolean>;
   tasks: Accessor<{ id: string; label: string; isSending: boolean }[]>;
   activeTaskId: Accessor<string>;
   setActiveTaskId: (taskId: string) => void;
@@ -24,13 +26,16 @@ interface ChatContextValue {
 }
 
 const ChatContext = createContext<ChatContextValue>();
+const CANCEL_TIMEOUT_MS = 5000;
+const CANCELLATION_TIMEOUT_MESSAGE = "Cancellation request timed out. The local stream was stopped.";
 
-function createTextMessageParams(text: string, contextId: string): MessageSendParams {
+function createTextMessageParams(text: string, contextId: string, taskId: string): MessageSendParams {
   return {
     message: {
       kind: "message",
       messageId: crypto.randomUUID(),
       contextId,
+      taskId,
       role: "user",
       parts: [{ kind: "text", text }],
     },
@@ -51,6 +56,10 @@ function toSlug(value: string): string {
 
 function buildAgentContextId(agentKey: string): string {
   return `agent-${toSlug(agentKey)}--${crypto.randomUUID()}`;
+}
+
+function buildRequestKey(agentKey: string, taskId: string): string {
+  return `${agentKey}::${taskId}`;
 }
 
 function readTextParts(value: unknown): string {
@@ -108,9 +117,51 @@ function toPrettyText(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function isTaskNotCancelableError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    error.name === "TaskNotCancelableError" ||
+    message.includes("task not cancelable") ||
+    message.includes("task cannot be canceled")
+  );
+}
+
+function readEventTaskId(event: A2AStreamEvent): string | null {
+  const payload = event as { taskId?: unknown; id?: unknown };
+  if (typeof payload.taskId === "string" && payload.taskId.length > 0) {
+    return payload.taskId;
+  }
+  if (event.kind === "task" && typeof payload.id === "string" && payload.id.length > 0) {
+    return payload.id;
+  }
+  return null;
+}
+
+function readEventStatusState(event: A2AStreamEvent): string | null {
+  if (event.kind === "status-update") {
+    const payload = event as { status?: { state?: unknown } };
+    return typeof payload.status?.state === "string" ? payload.status.state : null;
+  }
+  if (event.kind === "task") {
+    const payload = event as { status?: { state?: unknown } };
+    return typeof payload.status?.state === "string" ? payload.status.state : null;
+  }
+  return null;
+}
+
 interface AgentConversationState {
   messages: Message[];
   isSending: boolean;
+  isCancelling: boolean;
+  activeRequestTaskId: string | null;
   contextId: string | null;
   label: string;
 }
@@ -125,9 +176,22 @@ function emptyConversation(label: string, messages: Message[] = []): AgentConver
   return {
     messages,
     isSending: false,
+    isCancelling: false,
+    activeRequestTaskId: null,
     contextId: null,
     label,
   };
+}
+
+interface ActiveChatRequest {
+  abortController: AbortController;
+  client: A2AClient;
+  requestTaskId: string;
+  cancelRequested: boolean;
+  cancellationConfirmed: boolean;
+  cancelState: "idle" | "requested" | "not-cancelable" | "timed-out" | "failed";
+  failureMessage: string | null;
+  cancelPromise: Promise<void> | null;
 }
 
 function createWorkspace(initialMessages: Message[] = []): AgentWorkspaceState {
@@ -207,6 +271,7 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
   const { agents, activeAgentKey, refreshAgents } = useAgents();
   const [workspaces, setWorkspaces] = createSignal<Record<string, AgentWorkspaceState>>({});
   const [activeTaskIds, setActiveTaskIds] = createSignal<Record<string, string>>({});
+  const activeRequests = new Map<string, ActiveChatRequest>();
 
   const messages = createMemo(() => {
     const activeKey = activeAgentKey();
@@ -226,6 +291,16 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     }
     const selectedTaskId = activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
     return workspace.tasks[selectedTaskId]?.isSending ?? false;
+  });
+
+  const isCancelling = createMemo(() => {
+    const activeKey = activeAgentKey();
+    const workspace = workspaces()[activeKey];
+    if (!workspace) {
+      return false;
+    }
+    const selectedTaskId = activeTaskIds()[activeKey] ?? workspace.taskOrder[0] ?? "";
+    return workspace.tasks[selectedTaskId]?.isCancelling ?? false;
   });
 
   const activeTaskId = createMemo(() => {
@@ -367,6 +442,73 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     }
   };
 
+  const cancelActiveRequest = async (): Promise<void> => {
+    const targetAgentKey = activeAgentKey();
+    if (!targetAgentKey) {
+      return;
+    }
+
+    const workspace = workspaces()[targetAgentKey];
+    if (!workspace) {
+      return;
+    }
+
+    const targetTaskId = activeTaskIds()[targetAgentKey] ?? workspace.taskOrder[0] ?? "";
+    const task = workspace.tasks[targetTaskId];
+    if (!task?.activeRequestTaskId) {
+      return;
+    }
+
+    const request = activeRequests.get(buildRequestKey(targetAgentKey, targetTaskId));
+    if (!request || request.cancelPromise) {
+      return;
+    }
+
+    request.cancelRequested = true;
+    request.cancelState = "requested";
+    updateTask(targetAgentKey, targetTaskId, (current) => ({
+      ...current,
+      isCancelling: true,
+    }));
+
+    request.cancelPromise = (async () => {
+      try {
+        await Promise.race([
+          request.client.cancelTask(request.requestTaskId),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error(CANCELLATION_TIMEOUT_MESSAGE)), CANCEL_TIMEOUT_MS);
+          }),
+        ]);
+      } catch (error) {
+        if (isTaskNotCancelableError(error)) {
+          request.cancelState = "not-cancelable";
+          updateTask(targetAgentKey, targetTaskId, (current) => ({
+            ...current,
+            isCancelling: false,
+          }));
+          return;
+        }
+
+        if (error instanceof Error && error.message === CANCELLATION_TIMEOUT_MESSAGE) {
+          request.cancelState = "timed-out";
+          request.failureMessage = CANCELLATION_TIMEOUT_MESSAGE;
+          request.abortController.abort();
+          return;
+        }
+
+        request.cancelState = "failed";
+        request.failureMessage = error instanceof Error ? error.message : "Failed to cancel request";
+        request.abortController.abort();
+      }
+    })();
+
+    try {
+      await request.cancelPromise;
+    } finally {
+      request.cancelPromise = null;
+    }
+  };
+
   const sendMessage = async (content: string): Promise<void> => {
     const targetAgentKey = activeAgentKey();
     if (!targetAgentKey) {
@@ -377,6 +519,8 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     const targetTaskId = activeTaskIds()[targetAgentKey] ?? targetWorkspace.taskOrder[0] ?? "task-1";
     const activeContextId =
       (targetWorkspace.tasks[targetTaskId]?.contextId ?? null) ?? buildAgentContextId(targetAgentKey);
+    const requestTaskId = crypto.randomUUID();
+    const requestKey = buildRequestKey(targetAgentKey, targetTaskId);
 
     updateTask(targetAgentKey, targetTaskId, (current) => {
       if (current.contextId) {
@@ -399,6 +543,16 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       return updated.messages;
     };
 
+    let selectedAgent = agents().find((agent) => agent.key === targetAgentKey);
+    if (!selectedAgent) {
+      await refreshAgents();
+      selectedAgent = agents().find((agent) => agent.key === activeAgentKey());
+    }
+
+    if (!selectedAgent) {
+      throw new Error("No A2A agents available. Start a managed agent first.");
+    }
+
     const humanMessage: Message = {
       id: crypto.randomUUID(),
       type: "human",
@@ -410,8 +564,26 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     updateTask(targetAgentKey, targetTaskId, (current) => ({
       ...current,
       isSending: true,
+      isCancelling: false,
+      activeRequestTaskId: requestTaskId,
       contextId: current.contextId ?? activeContextId,
     }));
+
+    const abortController = new AbortController();
+    const a2aClient = createA2AClient({
+      agentCardPath: selectedAgent.agentCardPath,
+    });
+    const activeRequest: ActiveChatRequest = {
+      abortController,
+      client: a2aClient,
+      requestTaskId,
+      cancelRequested: false,
+      cancellationConfirmed: false,
+      cancelState: "idle",
+      failureMessage: null,
+      cancelPromise: null,
+    };
+    activeRequests.set(requestKey, activeRequest);
 
     let activeAssistantMessageId: string | null = null;
     let activeAssistantTimestamp = "";
@@ -421,6 +593,8 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
     let thinkingMessageId: string | null = null;
     let thinkingTimestamp = "";
     let streamedThinking = "";
+    let cancellationNoticeAppended = false;
+    let sawTaskIdMismatch = false;
 
     const beginAssistantMessage = (): void => {
       activeAssistantMessageId = crypto.randomUUID();
@@ -512,152 +686,196 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       streamedThinking = "";
     };
 
+    const appendToolNotice = (
+      contentValue: string,
+      status: Message["toolStatus"],
+      toolName: string = "A2A",
+    ): void => {
+      setAgentMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          type: "tool",
+          toolName,
+          content: contentValue,
+          toolStatus: status,
+          timestamp: timestamp(),
+        },
+      ]);
+    };
+
     try {
-      let selectedAgent = agents().find((agent) => agent.key === targetAgentKey);
-      if (!selectedAgent) {
-        await refreshAgents();
-        selectedAgent = agents().find((agent) => agent.key === activeAgentKey());
-      }
-
-      if (!selectedAgent) {
-        throw new Error("No A2A agents available. Start a managed agent first.");
-      }
-
-      const agentCardPath = selectedAgent.agentCardPath;
-      const a2aClient = createA2AClient({
-        agentCardPath,
-      });
-
-      await a2aClient.sendMessageStream(createTextMessageParams(content, activeContextId), (event) => {
-        if (event.kind === "message") {
-          return;
-        }
-
-        if (event.kind === "status-update") {
-          return;
-        }
-
-        if (event.kind === "artifact-update") {
-          const payload = event as { artifact?: { name?: unknown; parts?: unknown } };
-          const artifactName = typeof payload.artifact?.name === "string" ? payload.artifact.name : "Artifact";
-          const artifactText = readTextParts(payload.artifact?.parts);
-
-          if (artifactName === "output_start" || artifactName === "output_delta") {
-            if (sawToolResult) {
-              sawOutputAfterLastTool = true;
-            }
-            appendAssistantChunk(artifactText);
+      await a2aClient.sendMessageStream(
+        createTextMessageParams(content, activeContextId, requestTaskId),
+        (event) => {
+          const eventTaskId = readEventTaskId(event);
+          if (eventTaskId && eventTaskId !== requestTaskId) {
+            sawTaskIdMismatch = true;
+            activeRequest.failureMessage =
+              `Received mismatched task id '${eventTaskId}' while streaming '${requestTaskId}'.`;
+            activeRequest.abortController.abort();
             return;
           }
 
-          if (artifactName === "output_end" || artifactName === "full_output") {
-            if (artifactText.length > 0) {
-              if (artifactName === "full_output") {
-                if (sawToolResult && !sawOutputAfterLastTool) {
-                  clearAssistantMessage();
-                }
-              }
+          const taskState = readEventStatusState(event);
+          if (taskState === "canceled") {
+            finishThinkingBlock();
+            activeRequest.cancellationConfirmed = true;
+            if (!cancellationNoticeAppended) {
+              appendToolNotice("Request canceled.", "cancelled");
+              cancellationNoticeAppended = true;
+            }
+            return;
+          }
+
+          if (event.kind === "message") {
+            return;
+          }
+
+          if (event.kind === "status-update" || event.kind === "task") {
+            return;
+          }
+
+          if (event.kind === "artifact-update") {
+            const payload = event as { artifact?: { name?: unknown; parts?: unknown } };
+            const artifactName = typeof payload.artifact?.name === "string" ? payload.artifact.name : "Artifact";
+            const artifactText = readTextParts(payload.artifact?.parts);
+
+            if (artifactName === "output_start" || artifactName === "output_delta") {
               if (sawToolResult) {
                 sawOutputAfterLastTool = true;
               }
-              setAssistantText(artifactText);
+              appendAssistantChunk(artifactText);
+              return;
             }
-            return;
-          }
 
-          if (artifactName === "thinking_start") {
-            startNewThinkingBlock();
-            appendThinkingChunk(artifactText);
-            return;
-          }
-
-          if (artifactName === "thinking_delta") {
-            appendThinkingChunk(artifactText);
-            return;
-          }
-
-          if (artifactName === "thinking_end") {
-            if (artifactText.length > 0) {
-              setThinkingText(artifactText);
+            if (artifactName === "output_end" || artifactName === "full_output") {
+              if (artifactText.length > 0) {
+                if (artifactName === "full_output") {
+                  if (sawToolResult && !sawOutputAfterLastTool) {
+                    clearAssistantMessage();
+                  }
+                }
+                if (sawToolResult) {
+                  sawOutputAfterLastTool = true;
+                }
+                setAssistantText(artifactText);
+              }
+              return;
             }
-            finishThinkingBlock();
-            return;
-          }
 
-          if (artifactName === "tool_result") {
-            finishThinkingBlock();
-
-            if (!sawToolResult && activeAssistantMessageId !== null) {
-              removeAssistantMessage();
+            if (artifactName === "thinking_start") {
+              startNewThinkingBlock();
+              appendThinkingChunk(artifactText);
+              return;
             }
-            sawToolResult = true;
-            sawOutputAfterLastTool = false;
-            clearAssistantMessage();
 
-            const dataParts = readDataParts(payload.artifact?.parts);
-            const firstDataPart = dataParts[0];
-            const toolNameFromData = firstDataPart?.toolName;
-            const toolName = typeof toolNameFromData === "string" ? toolNameFromData : artifactName;
-            const toolCallId = typeof firstDataPart?.toolCallId === "string" ? firstDataPart.toolCallId : undefined;
-            const toolCallParamsText = toPrettyText(firstDataPart?.args);
-            const toolResultText = firstDataPart ? toPrettyText(firstDataPart.result) : artifactText;
-            const okFromData = firstDataPart?.ok;
-            const toolStatus = okFromData === false ? "error" : "success";
+            if (artifactName === "thinking_delta") {
+              appendThinkingChunk(artifactText);
+              return;
+            }
 
-            const toolCallMessage: Message = {
+            if (artifactName === "thinking_end") {
+              if (artifactText.length > 0) {
+                setThinkingText(artifactText);
+              }
+              finishThinkingBlock();
+              return;
+            }
+
+            if (artifactName === "tool_result") {
+              finishThinkingBlock();
+
+              if (!sawToolResult && activeAssistantMessageId !== null) {
+                removeAssistantMessage();
+              }
+              sawToolResult = true;
+              sawOutputAfterLastTool = false;
+              clearAssistantMessage();
+
+              const dataParts = readDataParts(payload.artifact?.parts);
+              const firstDataPart = dataParts[0];
+              const toolNameFromData = firstDataPart?.toolName;
+              const toolName = typeof toolNameFromData === "string" ? toolNameFromData : artifactName;
+              const toolCallId = typeof firstDataPart?.toolCallId === "string" ? firstDataPart.toolCallId : undefined;
+              const toolCallParamsText = toPrettyText(firstDataPart?.args);
+              const toolResultText = firstDataPart ? toPrettyText(firstDataPart.result) : artifactText;
+              const okFromData = firstDataPart?.ok;
+              const toolStatus = okFromData === false ? "error" : "success";
+
+              const toolCallMessage: Message = {
+                id: crypto.randomUUID(),
+                type: "tool-call",
+                content: toolResultText,
+                toolName,
+                toolCallId,
+                toolCallArgs: firstDataPart?.args,
+                toolResultData: firstDataPart?.result,
+                toolCallParams: toolCallParamsText,
+                toolResult: toolResultText,
+                toolStatus,
+                timestamp: timestamp(),
+              };
+
+              setAgentMessages((current) => [...current, toolCallMessage]);
+              return;
+            }
+
+            if (artifactName === "tool_call") {
+              finishThinkingBlock();
+              return;
+            }
+
+            const toolMessage: Message = {
               id: crypto.randomUUID(),
-              type: "tool-call",
-              content: toolResultText,
-              toolName,
-              toolCallId,
-              toolCallArgs: firstDataPart?.args,
-              toolResultData: firstDataPart?.result,
-              toolCallParams: toolCallParamsText,
-              toolResult: toolResultText,
-              toolStatus,
+              type: "tool",
+              toolName: artifactName,
+              content: artifactText || "Artifact received",
+              toolStatus: "success",
               timestamp: timestamp(),
             };
 
-            setAgentMessages((current) => [...current, toolCallMessage]);
-            return;
+            setAgentMessages((current) => [...current, toolMessage]);
           }
-
-          if (artifactName === "tool_call") {
-            finishThinkingBlock();
-            return;
-          }
-
-          const toolMessage: Message = {
-            id: crypto.randomUUID(),
-            type: "tool",
-            toolName: artifactName,
-            content: artifactText || "Artifact received",
-            toolStatus: "success",
-            timestamp: timestamp(),
-          };
-
-           setAgentMessages((current) => [...current, toolMessage]);
-        }
-      });
+        },
+        abortController.signal,
+      );
 
       finishThinkingBlock();
     } catch (error) {
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        type: "tool",
-        toolName: "A2A",
-        content: error instanceof Error ? error.message : "Failed to send message",
-        toolStatus: "error",
-        timestamp: timestamp(),
-      };
+      finishThinkingBlock();
 
-      setAgentMessages((current) => [...current, errorMessage]);
+      if (activeRequest.cancellationConfirmed) {
+        if (!cancellationNoticeAppended) {
+          appendToolNotice("Request canceled.", "cancelled");
+        }
+        return;
+      }
+
+      if (activeRequest.cancelState === "timed-out" || activeRequest.cancelState === "failed") {
+        appendToolNotice(activeRequest.failureMessage ?? "Failed to cancel request", "error");
+        return;
+      }
+
+      if (sawTaskIdMismatch) {
+        appendToolNotice(activeRequest.failureMessage ?? "Received mismatched task id during streaming.", "error");
+        throw error;
+      }
+
+      if (activeRequest.cancelRequested && isAbortError(error)) {
+        return;
+      }
+
+      appendToolNotice(error instanceof Error ? error.message : "Failed to send message", "error");
       throw error;
     } finally {
       updateTask(targetAgentKey, targetTaskId, (current) => ({
         ...current,
         isSending: false,
+        isCancelling: false,
+        activeRequestTaskId: current.activeRequestTaskId === requestTaskId ? null : current.activeRequestTaskId,
       }));
+      activeRequests.delete(requestKey);
     }
   };
 
@@ -666,7 +884,9 @@ export function ChatProvider(props: { children: JSX.Element; messages: Message[]
       value={{
         messages,
         sendMessage,
+        cancelActiveRequest,
         isSending,
+        isCancelling,
         tasks,
         activeTaskId,
         setActiveTaskId,

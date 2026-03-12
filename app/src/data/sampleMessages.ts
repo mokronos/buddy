@@ -4,7 +4,7 @@ export interface Message {
   content: string;
   timestamp?: string;
   toolName?: string;
-  toolStatus?: 'success' | 'error' | 'running';
+  toolStatus?: 'success' | 'error' | 'running' | 'cancelled';
   toolCallId?: string;
   toolCallArgs?: unknown;
   toolResultData?: unknown;

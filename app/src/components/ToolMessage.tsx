@@ -1,7 +1,7 @@
 interface ToolMessageProps {
   toolName: string;
   content: string;
-  status?: 'success' | 'error' | 'running';
+  status?: 'success' | 'error' | 'running' | 'cancelled';
   timestamp?: string;
 }
 
@@ -13,6 +13,8 @@ export default function ToolMessage(props: ToolMessageProps) {
       case 'error':
         return 'alert-error';
       case 'running':
+        return 'alert-warning';
+      case 'cancelled':
         return 'alert-warning';
       default:
         return 'alert-info';
@@ -27,6 +29,8 @@ export default function ToolMessage(props: ToolMessageProps) {
         return 'failed';
       case 'running':
         return 'running';
+      case 'cancelled':
+        return 'canceled';
       default:
         return 'notice';
     }

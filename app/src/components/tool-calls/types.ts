@@ -1,6 +1,6 @@
 export interface ToolCallRendererProps {
   toolName: string;
-  status?: 'success' | 'error' | 'running';
+  status?: 'success' | 'error' | 'running' | 'cancelled';
   timestamp?: string;
   toolCallId?: string;
   args?: unknown;

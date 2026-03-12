@@ -2,12 +2,12 @@ import type { JSX } from "solid-js";
 
 interface ToolCallCardBaseProps {
   toolName: string;
-  status?: 'success' | 'error' | 'running';
+  status?: 'success' | 'error' | 'running' | 'cancelled';
   timestamp?: string;
   children: JSX.Element;
 }
 
-function statusIcon(status?: 'success' | 'error' | 'running'): string {
+function statusIcon(status?: 'success' | 'error' | 'running' | 'cancelled'): string {
   switch (status) {
     case 'success':
       return '✓';
@@ -15,6 +15,8 @@ function statusIcon(status?: 'success' | 'error' | 'running'): string {
       return '✗';
     case 'running':
       return '⟳';
+    case 'cancelled':
+      return '■';
     default:
       return '⚙';
   }

@@ -3,7 +3,7 @@ import PromptSuggestions from "./PromptSuggestions";
 import { useChat } from "../context/ChatContext";
 
 export default function InputBox() {
-  const { sendMessage, isSending } = useChat();
+  const { sendMessage, cancelActiveRequest, isSending, isCancelling } = useChat();
   const [inputValue, setInputValue] = createSignal("");
   let formRef: HTMLFormElement | undefined;
   let textareaRef: HTMLTextAreaElement | undefined;
@@ -41,12 +41,17 @@ export default function InputBox() {
           rows="3"
         />
         <button
-          type="submit"
+          type={isSending() ? "button" : "submit"}
           class="btn btn-primary self-end"
-          disabled={!inputValue().trim() || isSending()}
+          disabled={isSending() ? isCancelling() : !inputValue().trim()}
+          onClick={() => {
+            if (isSending()) {
+              void cancelActiveRequest();
+            }
+          }}
         >
-          {isSending() ? <span class="loading loading-spinner loading-sm" /> : null}
-          {isSending() ? "Sending" : "Send"}
+          {isCancelling() ? <span class="loading loading-spinner loading-sm" /> : null}
+          {isCancelling() ? "Stopping..." : isSending() ? "Stop" : "Send"}
         </button>
       </form>
     </div>

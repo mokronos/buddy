@@ -1,5 +1,5 @@
 import { ClientFactory, type Client } from "@a2a-js/sdk/client";
-import type { MessageSendParams } from "@a2a-js/sdk";
+import type { MessageSendParams, Task } from "@a2a-js/sdk";
 
 function resolveDefaultBaseUrl(): string {
   const configured = import.meta.env.VITE_A2A_BASE_URL;
@@ -50,6 +50,11 @@ export class A2AClient {
     for await (const event of stream) {
       onEvent(event as A2AStreamEvent);
     }
+  }
+
+  async cancelTask(taskId: string, signal?: AbortSignal): Promise<Task> {
+    const client = await this.getClient();
+    return client.cancelTask({ id: taskId }, { signal });
   }
 }
 

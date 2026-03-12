@@ -9,7 +9,7 @@ import ScrollToBottomButton from "./ScrollToBottomButton";
 import { useChat } from "../context/ChatContext";
 
 export default function MessageBox() {
-  const { messages, isSending } = useChat();
+  const { messages, isSending, isCancelling } = useChat();
   let scrollContainerRef: HTMLDivElement | undefined;
   const [isAtBottom, setIsAtBottom] = createSignal(true);
 
@@ -39,6 +39,7 @@ export default function MessageBox() {
   createEffect(() => {
     messages();
     isSending();
+    isCancelling();
     if (isAtBottom()) {
       scrollToBottom();
     }
@@ -107,7 +108,7 @@ export default function MessageBox() {
           )}
         </For>
         <Show when={shouldShowWorkingIndicator()}>
-          <WorkingIndicator />
+          <WorkingIndicator stopping={isCancelling()} />
         </Show>
       </div>
       <Show when={!isAtBottom()}>

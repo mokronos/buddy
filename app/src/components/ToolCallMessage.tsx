@@ -2,7 +2,7 @@ import { getToolCallRenderer } from "./tool-calls/registry";
 
 interface ToolCallMessageProps {
   toolName: string;
-  status?: 'success' | 'error' | 'running';
+  status?: 'success' | 'error' | 'running' | 'cancelled';
   toolCallParams?: string;
   toolCallId?: string;
   toolCallArgs?: unknown;

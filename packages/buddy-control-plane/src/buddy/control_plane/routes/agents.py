@@ -46,7 +46,7 @@ def build_agents_router(state: ServerState) -> APIRouter:
     @router.get("/agents")
     async def list_agents() -> JSONResponse:
         managed_records = await run_in_threadpool(state.managed_agent_manager.list_agents)
-        managed_entries = [state.build_managed_entry(record.agent_id, record.status) for record in managed_records]
+        managed_entries = [state.build_managed_entry(record) for record in managed_records]
 
         external_records = await run_in_threadpool(state.external_agent_manager.list_agents)
         external_entries = [state.build_external_entry(record.agent_id) for record in external_records]

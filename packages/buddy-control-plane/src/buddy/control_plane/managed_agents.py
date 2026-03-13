@@ -373,6 +373,39 @@ class ManagedAgentManager:
         suffix = path if path.startswith("/") else f"/{path}"
         return f"http://127.0.0.1:{record.host_port}{suffix}"
 
+    def resolve_internal_target(self, agent_id: str, path: str) -> str:
+        agent_id = validate_agent_id(agent_id)
+        record = self.get_agent(agent_id)
+        if record is None:
+            raise ValueError(f"Agent '{agent_id}' does not exist")
+        if record.status != "running" or record.container_id is None:
+            raise ValueError(f"Agent '{agent_id}' is not running")
+
+        try:
+            container = self._docker.containers.get(record.container_id)
+            container.reload()
+        except NotFound as error:
+            raise ValueError(f"Agent '{agent_id}' container not found") from error
+
+        networks = container.attrs.get("NetworkSettings", {}).get("Networks", {})
+        if not isinstance(networks, dict):
+            raise ValueError(f"Agent '{agent_id}' has no network information")
+
+        container_ip = None
+        for network in networks.values():
+            if not isinstance(network, dict):
+                continue
+            ip_value = network.get("IPAddress")
+            if isinstance(ip_value, str) and ip_value:
+                container_ip = ip_value
+                break
+
+        if container_ip is None:
+            raise ValueError(f"Agent '{agent_id}' has no routable container IP")
+
+        suffix = path if path.startswith("/") else f"/{path}"
+        return f"http://{container_ip}:{record.container_port}{suffix}"
+
     def get_agent_logs(self, agent_id: str, tail: int = 200) -> tuple[ManagedAgentRecord, str]:
         start_time = perf_counter()
         if tail <= 0:

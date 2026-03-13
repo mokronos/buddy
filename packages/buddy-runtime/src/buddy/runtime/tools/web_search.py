@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import dataclass
 
 import cloudscraper
@@ -9,6 +10,7 @@ from requests.exceptions import RequestException, Timeout
 
 # your searxng instance
 url = "http://localhost:8888/search"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -75,8 +77,17 @@ def fetch_web_page(url: str) -> str:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
     }
+    if not url.strip().startswith(("http://", "https://")):
+        return "Invalid URL. Provide a full URL starting with http:// or https://."
+
     scraper = cloudscraper.create_scraper()
-    response = scraper.get(url, headers=headers)
+    try:
+        response = scraper.get(url, headers=headers, timeout=15)
+    except Timeout:
+        return "Fetching the page timed out. Try a different URL or retry later."
+    except RequestException:
+        logger.exception("fetch_web_page request failed", extra={"url": url})
+        return "Could not fetch the page. Verify the URL is reachable and try again."
 
     if response.ok:
         soup = BeautifulSoup(response.text, "html.parser")
@@ -88,7 +99,7 @@ def fetch_web_page(url: str) -> str:
         result = metadata + data
         return result
     else:
-        return f"Error: {response.status_code} | {response.text}"
+        return f"Page fetch failed with HTTP {response.status_code}. Try a different URL or retry later."
 
 
 if __name__ == "__main__":

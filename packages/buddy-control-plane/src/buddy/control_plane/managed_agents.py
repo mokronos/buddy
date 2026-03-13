@@ -28,6 +28,7 @@ from buddy.shared.runtime_config import (
 from docker.errors import NotFound
 
 logger = get_logger(__name__)
+DEFAULT_MANAGED_AGENT_PORT_BIND_HOST = "0.0.0.0"
 
 
 @dataclass
@@ -51,6 +52,9 @@ class ManagedAgentManager:
         self._docker = docker.from_env()
         self._lock = Lock()
         self._records: dict[str, ManagedAgentRecord] = {}
+        self._port_bind_host = os.environ.get(
+            "BUDDY_MANAGED_AGENT_PORT_BIND_HOST", DEFAULT_MANAGED_AGENT_PORT_BIND_HOST
+        )
         self._registry_path = registry_path or (buddy_data_dir() / "managed_agents.json")
         self._registry_path.parent.mkdir(parents=True, exist_ok=True)
         self._load_registry()
@@ -487,7 +491,7 @@ class ManagedAgentManager:
                 name=container_name,
                 command=command,
                 environment=env,
-                ports={port_key: ("127.0.0.1", 0)},
+                ports={port_key: (self._port_bind_host, 0)},
                 extra_hosts={"host.docker.internal": "host-gateway"},
                 volumes={record.config_path: {"bind": record.config_mount_path, "mode": "ro"}},
                 labels={

@@ -1,7 +1,19 @@
 import asyncio
 from typing import Any
 
-from a2a.types import Message, Part, Role, TaskState, TaskStatus, TaskStatusUpdateEvent, TextPart
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    Artifact,
+    Message,
+    Part,
+    Role,
+    TaskArtifactUpdateEvent,
+    TaskState,
+    TaskStatus,
+    TaskStatusUpdateEvent,
+    TextPart,
+)
 from a2a.utils.message import get_message_text
 from buddy.runtime.tools.communicate import communicate
 
@@ -19,6 +31,19 @@ class _FakeClient:
 
     async def close(self) -> None:
         self.closed = True
+
+
+def _fake_card(url: str = "http://localhost:8000/a2a") -> AgentCard:
+    return AgentCard(
+        name="test-agent",
+        description="test-agent",
+        url=url,
+        capabilities=AgentCapabilities(streaming=True),
+        default_input_modes=["text"],
+        default_output_modes=["text"],
+        skills=[],
+        version="0.0.1",
+    )
 
 
 def test_communicate_returns_latest_message_text(monkeypatch) -> None:
@@ -40,11 +65,16 @@ def test_communicate_returns_latest_message_text(monkeypatch) -> None:
     )
     captured: dict[str, Any] = {}
 
-    async def fake_connect(url: str, *, client_config: object) -> _FakeClient:
-        captured["url"] = url
+    async def fake_get_agent_card(self) -> AgentCard:
+        _ = self
+        return _fake_card()
+
+    async def fake_connect(agent_card: AgentCard, *, client_config: object) -> _FakeClient:
+        captured["url"] = agent_card.url
         captured["config"] = client_config
         return fake_client
 
+    monkeypatch.setattr("buddy.runtime.tools.communicate.A2ACardResolver.get_agent_card", fake_get_agent_card)
     monkeypatch.setattr("buddy.runtime.tools.communicate.ClientFactory.connect", fake_connect)
 
     result = asyncio.run(communicate("http://localhost:10001/a2a", "hello from tool"))
@@ -73,10 +103,15 @@ def test_communicate_returns_status_failure_message(monkeypatch) -> None:
     )
     fake_client = _FakeClient(events=[(object(), failed_update)])
 
-    async def fake_connect(_url: str, *, client_config: object) -> _FakeClient:
+    async def fake_get_agent_card(self) -> AgentCard:
+        _ = self
+        return _fake_card()
+
+    async def fake_connect(_agent_card: AgentCard, *, client_config: object) -> _FakeClient:
         _ = client_config
         return fake_client
 
+    monkeypatch.setattr("buddy.runtime.tools.communicate.A2ACardResolver.get_agent_card", fake_get_agent_card)
     monkeypatch.setattr("buddy.runtime.tools.communicate.ClientFactory.connect", fake_connect)
 
     result = asyncio.run(communicate("http://localhost:10001/a2a", "hello"))
@@ -86,13 +121,67 @@ def test_communicate_returns_status_failure_message(monkeypatch) -> None:
 
 
 def test_communicate_handles_connect_errors(monkeypatch) -> None:
-    async def fake_connect(_url: str, *, client_config: object) -> _FakeClient:
+    async def fake_get_agent_card(self) -> AgentCard:
+        _ = self
+        return _fake_card()
+
+    async def fake_connect(_agent_card: AgentCard, *, client_config: object) -> _FakeClient:
         _ = client_config
         raise RuntimeError("connection refused")
 
+    monkeypatch.setattr("buddy.runtime.tools.communicate.A2ACardResolver.get_agent_card", fake_get_agent_card)
     monkeypatch.setattr("buddy.runtime.tools.communicate.ClientFactory.connect", fake_connect)
 
     result = asyncio.run(communicate("http://localhost:9999/a2a", "hello"))
 
     assert "Failed to connect to agent" in result
     assert "connection refused" in result
+
+
+def test_communicate_returns_output_artifact_text(monkeypatch) -> None:
+    output_update = TaskArtifactUpdateEvent(
+        contextId="ctx-artifact",
+        taskId="task-artifact",
+        artifact=Artifact(
+            artifactId="artifact-output",
+            name="full_output",
+            parts=[Part(root=TextPart(text="the magic word is please"))],
+        ),
+    )
+    fake_client = _FakeClient(events=[(object(), output_update)])
+
+    async def fake_get_agent_card(self) -> AgentCard:
+        _ = self
+        return _fake_card()
+
+    async def fake_connect(_agent_card: AgentCard, *, client_config: object) -> _FakeClient:
+        _ = client_config
+        return fake_client
+
+    monkeypatch.setattr("buddy.runtime.tools.communicate.A2ACardResolver.get_agent_card", fake_get_agent_card)
+    monkeypatch.setattr("buddy.runtime.tools.communicate.ClientFactory.connect", fake_connect)
+
+    result = asyncio.run(communicate("http://localhost:10001/a2a", "hello"))
+
+    assert result == "the magic word is please"
+
+
+def test_communicate_overrides_card_url_with_target_url(monkeypatch) -> None:
+    fake_client = _FakeClient(events=[])
+    captured: dict[str, str] = {}
+
+    async def fake_get_agent_card(self) -> AgentCard:
+        _ = self
+        return _fake_card(url="http://localhost:8000/a2a")
+
+    async def fake_connect(agent_card: AgentCard, *, client_config: object) -> _FakeClient:
+        _ = client_config
+        captured["url"] = agent_card.url
+        return fake_client
+
+    monkeypatch.setattr("buddy.runtime.tools.communicate.A2ACardResolver.get_agent_card", fake_get_agent_card)
+    monkeypatch.setattr("buddy.runtime.tools.communicate.ClientFactory.connect", fake_connect)
+
+    _ = asyncio.run(communicate("http://172.17.0.3:8000/a2a", "hello"))
+
+    assert captured["url"] == "http://172.17.0.3:8000/a2a"

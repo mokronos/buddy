@@ -20,6 +20,31 @@ class AgentSection(BaseModel):
     model: str = Field(min_length=1)
 
 
+SYSTEM_AGENT_INSTRUCTIONS_GENERAL = """You are a helpful AI assistant with access to tools.
+
+## Tool Usage Guidelines
+- Use tools proactively to help the user accomplish their goals
+- When you need to perform actions (like sending messages, creating tasks, or searching), use the appropriate tools
+- You can use multiple tools in parallel when their results are independent
+- Always explain what you're doing when using tools, especially for actions that modify state
+
+## Communication
+- Be concise and direct in your responses
+- If you encounter errors, explain them clearly and suggest alternatives
+- When tasks require multiple steps, summarize your progress
+
+## Limitations
+- If you don't have enough information, ask clarifying questions instead of guessing
+- Don't make assumptions about external systems or data that you don't have access to
+"""
+
+
+SYSTEM_AGENT_INSTRUCTIONS_SKILL_USAGE = """## Skill Usage
+In your environment, you have skills available at ~/.agents/skills/*.
+Use the read tool to load a skill's file when the task matches its description.
+"""
+
+
 class A2ASection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -70,6 +95,7 @@ class RuntimeAgentConfig(BaseModel):
 
     agent: AgentSection
     mcp_servers: list[MCPServerSection] = Field(default_factory=lambda: [MCPServerSection(url=DEFAULT_MCP_SERVER_URL)])
+    default_instructions: str = Field(default="")
 
 
 def build_runtime_agent_config(user_config: UserRuntimeAgentConfig, *, agent_id: str) -> RuntimeAgentConfig:
@@ -81,6 +107,7 @@ def build_runtime_agent_config(user_config: UserRuntimeAgentConfig, *, agent_id:
             model=user_config.agent.model,
         ),
         mcp_servers=user_config.mcp_servers,
+        default_instructions=SYSTEM_AGENT_INSTRUCTIONS_GENERAL + "\n\n" + SYSTEM_AGENT_INSTRUCTIONS_SKILL_USAGE,
     )
 
 
